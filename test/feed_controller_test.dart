@@ -78,32 +78,58 @@ void main() {
     expect(c.profile.artists[first.artist], signalWeights[Signal.complete]);
   });
 
-  test('completion records once and requests the next page', () async {
+  test('completion plays the next song by itself, without the UI', () async {
+    // 锁屏时界面不绘制、不翻页，只有控制器自己切歌才能连播。
     await build(['A', 'B']);
     await c.init();
     await settle();
-    final requests = <int>[];
-    final sub = c.advanceRequests.listen(requests.add);
-    audio.complete();
-    audio.complete(); // 重复事件不应重复计分。
-    await settle();
-    expect(requests, [1]);
     final first = c.items[0].track;
-    await c.onPageChanged(1);
+    final second = c.items[1].track;
+    audio.complete();
+    // 切歌瞬间旧播放器补发的「放完」：不应把新歌当成放完而连跳两首。
+    audio.completeStale(first.id);
+    await settle();
+    expect(audio.played, [first.id, second.id]);
+    expect(c.index, 1);
     expect(c.profile.artists[first.artist], signalWeights[Signal.complete]);
-    await sub.cancel();
+    // 界面随后翻到同一页时不应重复触发。
+    await c.onPageChanged(1);
+    expect(audio.played, [first.id, second.id]);
   });
 
   test('no auto advance when disabled', () async {
     await build(['A', 'B'], autoAdvance: false);
     await c.init();
     await settle();
-    final requests = <int>[];
-    final sub = c.advanceRequests.listen(requests.add);
     audio.complete();
     await settle();
-    expect(requests, isEmpty);
-    await sub.cancel();
+    expect(audio.played, hasLength(1));
+    expect(c.index, 0);
+  });
+
+  test('completing the last song waits for the next batch, then keeps playing', () async {
+    audio = FakeAudio();
+    final source = SequenceSource([
+      [track('a', artist: 'A')],
+      [track('b', artist: 'B')],
+    ]);
+    c = FeedController(
+      recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
+      audio: audio,
+      store: await memoryStore(),
+      prefetchThreshold: 0,
+    );
+    await c.init();
+    await settle();
+    source.gate = Completer<void>();
+    audio.complete();
+    await settle();
+    expect(c.index, 1);
+    expect(c.current, isNull);
+    source.gate!.complete();
+    await settle();
+    await settle();
+    expect(audio.played, ['a', 'b']);
   });
 
   test('swiping back to a played song counts as replay', () async {
@@ -125,8 +151,6 @@ void main() {
     await build(['A', 'B', 'A', 'C', 'A']);
     await c.init();
     await settle();
-    final requests = <int>[];
-    final sub = c.advanceRequests.listen(requests.add);
     final first = c.items[0];
     final before = c.items.map((i) => i.track.artist).toList();
     c.dislike(first);
@@ -137,11 +161,10 @@ void main() {
     ];
     expect(c.items.map((i) => i.track.artist), expected);
     expect(c.profile.blockedArtists, {first.track.artist});
-    expect(requests, [1]);
-    // 离开时不再重复记一次跳过。
-    await c.onPageChanged(1);
+    // 直接切到下一首，离开时也不再重复记一次跳过。
+    expect(c.index, 1);
+    expect(audio.played.last, c.items[1].track.id);
     expect(c.profile.artists[first.track.artist], signalWeights[Signal.dislike]);
-    await sub.cancel();
   });
 
   test('like persists across controller instances', () async {
@@ -271,5 +294,90 @@ void main() {
     await settle();
     expect(c.error, isNull);
     expect(audio.played, ['ok']);
+  });
+
+  group('lock screen and notification', () {
+    late FakeSession session;
+
+    Future<void> buildWithSession(List<String> artists) async {
+      audio = FakeAudio();
+      session = FakeSession();
+      var n = 0;
+      c = FeedController(
+        recommender: Recommender(
+          source: FakeSource({}, fallback: [
+            for (final a in artists) track('t${n++}', artist: a),
+          ]),
+          profile: TasteProfile(),
+          seeds: ['seed'],
+          maxPerArtist: 99,
+        ),
+        audio: audio,
+        store: await memoryStore(),
+        session: session,
+        prefetchThreshold: 0,
+      );
+      await c.init();
+      await settle();
+    }
+
+    test('attaches itself and publishes the current song', () async {
+      await buildWithSession(['A', 'B']);
+      expect(session.commands, same(c));
+      expect(session.last.track, c.items[0].track);
+      expect(session.last.playing, isTrue);
+      expect(session.last.duration, const Duration(seconds: 30));
+      expect(session.last.hasPrevious, isFalse);
+    });
+
+    test('lock screen next / previous move through the feed', () async {
+      await buildWithSession(['A', 'B', 'C']);
+      final first = c.items[0].track;
+      audio.tick(const Duration(seconds: 2));
+      await session.commands!.next();
+      expect(c.index, 1);
+      expect(session.last.track, c.items[1].track);
+      expect(session.last.hasPrevious, isTrue);
+      // 锁屏点「下一首」和手势秒划是同一个信号。
+      expect(c.profile.artists[first.artist], signalWeights[Signal.quickSkip]);
+
+      await session.commands!.previous();
+      expect(c.index, 0);
+      expect(session.last.track, first);
+      await session.commands!.previous(); // 第一首再按上一首：无事发生。
+      expect(c.index, 0);
+    });
+
+    test('lock screen pause / play / seek', () async {
+      await buildWithSession(['A']);
+      await session.commands!.pause();
+      expect(audio.isPlaying, isFalse);
+      expect(session.last.playing, isFalse);
+      await session.commands!.play();
+      expect(session.last.playing, isTrue);
+      await session.commands!.seek(const Duration(seconds: 12));
+      expect(session.last.position, const Duration(seconds: 12));
+    });
+
+    test('notification heart toggles like on the current song', () async {
+      await buildWithSession(['A']);
+      final t = c.items[0].track;
+      await session.commands!.toggleLikeCurrent();
+      expect(c.isLiked(t), isTrue);
+      expect(session.last.liked, isTrue);
+      await session.commands!.toggleLikeCurrent();
+      expect(c.isLiked(t), isFalse);
+      expect(session.last.liked, isFalse);
+    });
+
+    test('songs keep playing back to back while locked', () async {
+      await buildWithSession(['A', 'B', 'C']);
+      audio.complete();
+      await settle();
+      audio.complete();
+      await settle();
+      expect(audio.played, [for (final i in c.items) i.track.id]);
+      expect(session.last.track, c.items[2].track);
+    });
   });
 }

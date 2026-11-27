@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shuage/audio/audio_engine.dart';
+import 'package:shuage/audio/now_playing.dart';
 import 'package:shuage/data/library_store.dart';
 import 'package:shuage/data/track_source.dart';
 import 'package:shuage/models/track.dart';
@@ -48,7 +49,7 @@ class FakeAudio implements AudioEngine {
   final position$ = StreamController<Duration>.broadcast(sync: true);
   final duration$ = StreamController<Duration?>.broadcast(sync: true);
   final playing$ = StreamController<bool>.broadcast(sync: true);
-  final completed$ = StreamController<void>.broadcast(sync: true);
+  final completed$ = StreamController<String>.broadcast(sync: true);
   final List<String> played = [];
   final List<String> preloaded = [];
   final Set<String> failIds = {};
@@ -61,7 +62,7 @@ class FakeAudio implements AudioEngine {
   @override
   Stream<bool> get playingStream => playing$.stream;
   @override
-  Stream<void> get completedStream => completed$.stream;
+  Stream<String> get completedStream => completed$.stream;
   @override
   Duration position = Duration.zero;
 
@@ -70,7 +71,11 @@ class FakeAudio implements AudioEngine {
     position$.add(p);
   }
 
-  void complete() => completed$.add(null);
+  /// 当前（最后开始播的）这首放完。
+  void complete() => completed$.add(played.last);
+
+  /// 模拟某首旧歌迟到的「放完」事件。
+  void completeStale(String id) => completed$.add(id);
 
   @override
   Future<void> preload(Track track) async => preloaded.add(track.id);
@@ -138,4 +143,18 @@ class FlakySource implements TrackSource {
     }
     return tracks;
   }
+}
+
+/// 记录推送内容的假系统会话，可以模拟锁屏按键。
+class FakeSession implements NowPlayingSession {
+  RemoteCommands? commands;
+  final List<NowPlaying> updates = [];
+
+  NowPlaying get last => updates.last;
+
+  @override
+  void attach(RemoteCommands c) => commands = c;
+
+  @override
+  void update(NowPlaying state) => updates.add(state);
 }

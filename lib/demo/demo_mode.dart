@@ -54,9 +54,10 @@ class DemoAudioEngine implements AudioEngine {
   final _position = StreamController<Duration>.broadcast();
   final _duration = StreamController<Duration?>.broadcast();
   final _playing = StreamController<bool>.broadcast();
-  final _completed = StreamController<void>.broadcast();
+  final _completed = StreamController<String>.broadcast();
   Timer? _timer;
   Duration _pos = Duration.zero;
+  String _trackId = '';
 
   @override
   Stream<Duration> get positionStream => _position.stream;
@@ -65,7 +66,7 @@ class DemoAudioEngine implements AudioEngine {
   @override
   Stream<bool> get playingStream => _playing.stream;
   @override
-  Stream<void> get completedStream => _completed.stream;
+  Stream<String> get completedStream => _completed.stream;
   @override
   Duration get position => _pos;
 
@@ -74,6 +75,7 @@ class DemoAudioEngine implements AudioEngine {
 
   @override
   Future<void> play(Track track) async {
+    _trackId = track.id;
     _pos = Duration.zero;
     _duration.add(length);
     await resume();
@@ -91,7 +93,7 @@ class DemoAudioEngine implements AudioEngine {
       if (_pos >= length) {
         _timer?.cancel();
         _playing.add(false);
-        _completed.add(null);
+        _completed.add(_trackId);
       }
     });
   }

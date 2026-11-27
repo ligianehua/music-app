@@ -12,8 +12,11 @@ abstract class AudioEngine {
 
   Stream<bool> get playingStream;
 
-  /// 当前歌放完时触发一次。
-  Stream<void> get completedStream;
+  /// 某首歌放完时触发，带上这首歌的 id。
+  ///
+  /// 带 id 是为了防串台：切歌瞬间旧播放器可能补发一次「放完」，
+  /// 控制器据此忽略，不会把新歌当成放完而连跳两首。
+  Stream<String> get completedStream;
 
   Duration get position;
 

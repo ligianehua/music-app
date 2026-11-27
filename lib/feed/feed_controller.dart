@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../audio/audio_engine.dart';
+import '../audio/now_playing.dart';
 import '../data/library_store.dart';
 import '../data/lyrics_source.dart';
 import '../data/track_source.dart';
@@ -28,27 +29,41 @@ class FeedItem {
 /// - 剩余不足 [prefetchThreshold] 张时自动拉下一批；
 /// - 当前这首放完自动续到下一张（[autoAdvance]）；
 /// - 划回已经听过的歌记为 [Signal.replay]。
-class FeedController extends ChangeNotifier {
+///
+/// 导航以控制器为准：自动续播、锁屏「下一首」、不感兴趣都由控制器直接切歌，
+/// 界面只跟随 [index]。这样锁屏、熄屏时界面不绘制，也能连续播放。
+class FeedController extends ChangeNotifier implements RemoteCommands {
   FeedController({
     required this.recommender,
     required this.audio,
     required this.store,
     this.lyricsSource,
+    this.session,
     this.autoAdvance = true,
     this.prefetchThreshold = 3,
     this.previewLength = const Duration(seconds: 30),
   }) {
     _subs
       ..add(audio.positionStream.listen(_onPosition))
-      ..add(audio.durationStream.listen((d) => duration.value = d))
-      ..add(audio.playingStream.listen((p) => playing.value = p))
-      ..add(audio.completedStream.listen((_) => _onCompleted()));
+      ..add(audio.durationStream.listen((d) {
+        duration.value = d;
+        _publish();
+      }))
+      ..add(audio.playingStream.listen((p) {
+        playing.value = p;
+        _publish();
+      }))
+      ..add(audio.completedStream.listen(_onCompleted));
+    session?.attach(this);
   }
 
   final Recommender recommender;
   final AudioEngine audio;
   final LibraryStore store;
   final LyricsSource? lyricsSource;
+
+  /// 锁屏和通知栏。为 null 时不对接系统媒体会话。
+  final NowPlayingSession? session;
   final bool autoAdvance;
   final int prefetchThreshold;
 
@@ -66,11 +81,6 @@ class FeedController extends ChangeNotifier {
   final ValueNotifier<Duration> position = ValueNotifier(Duration.zero);
   final ValueNotifier<Duration?> duration = ValueNotifier(null);
   final ValueNotifier<bool> playing = ValueNotifier(false);
-
-  final _advance = StreamController<int>.broadcast();
-
-  /// 控制器希望界面翻到的页码（自动续播、点了不感兴趣）。
-  Stream<int> get advanceRequests => _advance.stream;
 
   final List<StreamSubscription<dynamic>> _subs = [];
   final Set<String> _played = {};
@@ -125,8 +135,12 @@ class FeedController extends ChangeNotifier {
     }
   }
 
-  /// PageView 翻页回调。
-  Future<void> onPageChanged(int newIndex) async {
+  /// PageView 翻页回调：用户手动划到了第 [newIndex] 张。
+  Future<void> onPageChanged(int newIndex) => goTo(newIndex);
+
+  /// 切到第 [newIndex] 张。手势、自动续播、锁屏按钮都走这里。
+  Future<void> goTo(int newIndex) async {
+    if (newIndex < 0) return;
     if (newIndex == index && _played.contains(current?.track.id)) return;
     _recordLeave();
     if (newIndex >= items.length) {
@@ -154,6 +168,7 @@ class FeedController extends ChangeNotifier {
     position.value = Duration.zero;
     duration.value = null;
     _notify();
+    _publish();
 
     if (items.length - i <= prefetchThreshold) unawaited(_loadMore());
     if (i + 1 < items.length) unawaited(audio.preload(items[i + 1].track));
@@ -171,12 +186,15 @@ class FeedController extends ChangeNotifier {
     if (p > _maxListened) _maxListened = p;
   }
 
-  void _onCompleted() {
+  void _onCompleted(String trackId) {
     final item = current;
-    if (item == null || _completedCurrent) return;
+    // 切歌瞬间旧播放器补发的「放完」：不是当前这首，忽略。
+    if (item == null || item.track.id != trackId || _completedCurrent) return;
     _completedCurrent = true;
     _record(item.track, Signal.complete);
-    if (autoAdvance && index + 1 < items.length) _advance.add(index + 1);
+    // 直接切歌，不等界面翻页：锁屏时界面不绘制，翻页动画根本不会跑。
+    // 如果已经是最后一张，会进入「等下一批」状态，到了自动接着播。
+    if (autoAdvance) unawaited(goTo(index + 1));
   }
 
   /// 离开当前歌：放完的已经记过了，没放完的按听了多久打分。
@@ -192,17 +210,34 @@ class FeedController extends ChangeNotifier {
     unawaited(store.saveProfile(profile));
   }
 
-  Future<void> togglePlay() async {
-    if (playing.value) {
-      await audio.pause();
-    } else {
-      await audio.resume();
-    }
+  Future<void> togglePlay() => playing.value ? pause() : play();
+
+  @override
+  Future<void> play() async {
+    if (current == null) return;
+    await audio.resume();
   }
 
+  @override
+  Future<void> pause() => audio.pause();
+
+  @override
+  Future<void> next() => goTo(index + 1);
+
+  @override
+  Future<void> previous() => goTo(index - 1);
+
+  @override
+  Future<void> toggleLikeCurrent() async {
+    final item = current;
+    if (item != null) await toggleLike(item.track);
+  }
+
+  @override
   Future<void> seek(Duration to) async {
     if (to > _maxListened) _maxListened = to;
     await audio.seek(to);
+    _publish();
   }
 
   /// 切换红心。返回切换后是否为红心状态。
@@ -216,6 +251,7 @@ class FeedController extends ChangeNotifier {
       _record(t, Signal.unlike);
     }
     _notify();
+    _publish();
     await store.saveLiked(_liked);
     return nowLiked;
   }
@@ -239,7 +275,7 @@ class FeedController extends ChangeNotifier {
       ..addAll(rest);
     _notify();
     if (items.length - at <= prefetchThreshold) unawaited(_loadMore());
-    if (at + 1 < items.length) _advance.add(at + 1);
+    if (at == index) unawaited(goTo(at + 1));
   }
 
   Future<void> addNote(Track t, String text) async {
@@ -275,13 +311,26 @@ class FeedController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  /// 把当前状态推给锁屏和通知栏。
+  void _publish() {
+    final item = current;
+    if (_disposed || session == null || item == null) return;
+    session!.update(NowPlaying(
+      track: item.track,
+      liked: isLiked(item.track),
+      playing: playing.value,
+      position: audio.position,
+      duration: duration.value,
+      hasPrevious: index > 0,
+    ));
+  }
+
   @override
   void dispose() {
     _disposed = true;
     for (final s in _subs) {
       s.cancel();
     }
-    _advance.close();
     position.dispose();
     duration.dispose();
     playing.dispose();

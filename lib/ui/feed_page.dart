@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:material_ui/material_ui.dart';
 
 import '../feed/feed_controller.dart';
@@ -23,36 +21,52 @@ class FeedPage extends StatefulWidget {
 
 class _FeedPageState extends State<FeedPage> {
   final _page = PageController();
-  StreamSubscription<int>? _advanceSub;
+  int? _animatingTo;
 
   FeedController get c => widget.controller;
 
   @override
   void initState() {
     super.initState();
-    _advanceSub = c.advanceRequests.listen(_goTo);
+    c.addListener(_followController);
     if (widget.autoInit) c.init();
   }
 
-  void _goTo(int i) {
+  /// 控制器自己切了歌（自动续播、锁屏按钮、不感兴趣），翻页跟上去。
+  ///
+  /// 在前台且只差一页时播放翻页动画；在后台或差了好几页（比如锁屏连播了
+  /// 几首后解锁）就直接跳过去，否则动画途经的每一页都会被当成用户手势。
+  void _followController() {
     if (!_page.hasClients) return;
-    _page.animateToPage(
-      i,
-      duration: const Duration(milliseconds: 380),
-      curve: Curves.easeOutCubic,
-    );
+    final shown = _page.page?.round();
+    final target = c.index;
+    if (shown == null || shown == target || _animatingTo == target) return;
+    final foreground =
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    if (foreground && (target - shown).abs() == 1) {
+      _animatingTo = target;
+      _page
+          .animateToPage(
+            target,
+            duration: const Duration(milliseconds: 380),
+            curve: Curves.easeOutCubic,
+          )
+          .whenComplete(() => _animatingTo = null);
+    } else {
+      _page.jumpToPage(target);
+    }
   }
 
   Future<void> _openLiked() async {
     final picked = await Navigator.of(context).push<Track>(
       MaterialPageRoute(builder: (_) => LikedPage(controller: c)),
     );
-    if (picked != null) _goTo(c.insertNext(picked));
+    if (picked != null) await c.goTo(c.insertNext(picked));
   }
 
   @override
   void dispose() {
-    _advanceSub?.cancel();
+    c.removeListener(_followController);
     _page.dispose();
     super.dispose();
   }

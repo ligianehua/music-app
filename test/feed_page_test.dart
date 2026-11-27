@@ -87,4 +87,29 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     expect(c.index, 1);
   });
+
+  testWidgets('pages follow the controller when a song finishes', (tester) async {
+    await pumpFeed(tester);
+    final second = c.items[1].track;
+    audio.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(c.index, 1);
+    expect(find.text(second.title), findsOneWidget);
+    expect(audio.played.last, second.id);
+  });
+
+  testWidgets('jumps straight to the right page after playing in the background',
+      (tester) async {
+    await pumpFeed(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    // 锁屏中连播：控制器已经走到了后面，界面没有绘制。
+    await c.next();
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text(c.items[1].track.title), findsOneWidget);
+    expect(audio.played, [c.items[0].track.id, c.items[1].track.id]);
+  });
 }

@@ -22,7 +22,7 @@ class JustAudioEngine implements AudioEngine {
   final _position = StreamController<Duration>.broadcast();
   final _duration = StreamController<Duration?>.broadcast();
   final _playing = StreamController<bool>.broadcast();
-  final _completed = StreamController<void>.broadcast();
+  final _completed = StreamController<String>.broadcast();
 
   @override
   Stream<Duration> get positionStream => _position.stream;
@@ -31,7 +31,7 @@ class JustAudioEngine implements AudioEngine {
   @override
   Stream<bool> get playingStream => _playing.stream;
   @override
-  Stream<void> get completedStream => _completed.stream;
+  Stream<String> get completedStream => _completed.stream;
 
   AudioPlayer? get _active => _activeId == null ? null : _players[_activeId];
 
@@ -96,7 +96,7 @@ class JustAudioEngine implements AudioEngine {
       ..add(player.durationStream.listen(_duration.add))
       ..add(player.playingStream.listen(_playing.add))
       ..add(player.processingStateStream.listen((s) {
-        if (s == ProcessingState.completed) _completed.add(null);
+        if (s == ProcessingState.completed) _completed.add(track.id);
       }));
     await player.seek(Duration(milliseconds: track.highlightStartMs));
     // play() 的 Future 要到暂停或播完才结束，这里不能 await。
