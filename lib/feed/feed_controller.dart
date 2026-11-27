@@ -18,7 +18,7 @@ class FeedItem {
   final Track track;
   final String reason;
 
-  /// 播放失败（地址失效等）时为 true，界面提示用户划走。
+  /// 播放失败（地址失效等）时为 true。
   bool failed = false;
 }
 
@@ -27,11 +27,11 @@ class FeedItem {
 /// 规则：
 /// - 滑到哪张就播哪张，离开时按「听了多久」给口味画像打分；
 /// - 剩余不足 [prefetchThreshold] 张时自动拉下一批；
-/// - 当前这首放完自动续到下一张（[autoAdvance]）；
+/// - 当前这首放完由原生播放队列自动接下一首；
 /// - 划回已经听过的歌记为 [Signal.replay]。
 ///
-/// 导航以控制器为准：自动续播、锁屏「下一首」、不感兴趣都由控制器直接切歌，
-/// 界面只跟随 [index]。这样锁屏、熄屏时界面不绘制，也能连续播放。
+/// [items] 和播放引擎的原生队列一一对应，所有增删都同步到引擎。
+/// 导航以控制器为准，界面只跟随 [index]，所以锁屏时界面不绘制也能连播。
 class FeedController extends ChangeNotifier implements RemoteCommands {
   FeedController({
     required this.recommender,
@@ -39,7 +39,6 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     required this.store,
     this.lyricsSource,
     this.session,
-    this.autoAdvance = true,
     this.prefetchThreshold = 3,
     this.previewLength = const Duration(seconds: 30),
   }) {
@@ -53,7 +52,9 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
         playing.value = p;
         _publish();
       }))
-      ..add(audio.completedStream.listen(_onCompleted));
+      ..add(audio.autoAdvanceStream.listen(_onAutoAdvance))
+      ..add(audio.queueEndStream.listen((_) => _onQueueEnd()))
+      ..add(audio.errorStream.listen(_onError));
     session?.attach(this);
   }
 
@@ -64,7 +65,6 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
 
   /// 锁屏和通知栏。为 null 时不对接系统媒体会话。
   final NowPlayingSession? session;
-  final bool autoAdvance;
   final int prefetchThreshold;
 
   /// 时长未知时用来计算收听比例。
@@ -87,7 +87,9 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
   List<Track> _liked = [];
   Map<String, List<String>> _notes = {};
   Duration _maxListened = Duration.zero;
-  bool _completedCurrent = false;
+
+  /// 当前这首已经记过「听完」或「不感兴趣」，离开时不再重复计分。
+  bool _scoredCurrent = false;
   bool _disposed = false;
 
   /// 用户划到了还没加载出来的位置，加载完成后从这里开始播。
@@ -119,10 +121,14 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     if (loading) return;
     loading = true;
     _notify();
+    var added = 0;
     try {
       final recs = await recommender.nextBatch();
+      added = recs.length;
       items.addAll(recs.map((r) => FeedItem(r.track, r.reason)));
       error = null;
+      // 先进原生队列再开播：队列里有了，原生层才能自己接上去。
+      unawaited(_guard(audio.append([for (final r in recs) r.track])));
       final pending = _pendingIndex;
       if (pending != null && pending < items.length) {
         unawaited(_activate(pending));
@@ -133,12 +139,17 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
       loading = false;
       _notify();
     }
+    // 加载期间触发的补货请求会被 loading 挡掉，所以到货后再查一次：
+    // 还不够就接着补，直到够了或拉不到新歌为止。
+    if (added > 0 && items.length - index <= prefetchThreshold) {
+      unawaited(_loadMore());
+    }
   }
 
   /// PageView 翻页回调：用户手动划到了第 [newIndex] 张。
   Future<void> onPageChanged(int newIndex) => goTo(newIndex);
 
-  /// 切到第 [newIndex] 张。手势、自动续播、锁屏按钮都走这里。
+  /// 主动切到第 [newIndex] 张。手势、锁屏按钮、不感兴趣都走这里。
   Future<void> goTo(int newIndex) async {
     if (newIndex < 0) return;
     if (newIndex == index && _played.contains(current?.track.id)) return;
@@ -155,26 +166,25 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     await _activate(newIndex);
   }
 
-  Future<void> _activate(int i) async {
+  /// 进入第 [i] 张。[fromEngine] 为 true 表示原生队列已经在播它了，不用再跳。
+  Future<void> _activate(int i, {bool fromEngine = false}) async {
     if (i < 0 || i >= items.length) return;
     _pendingIndex = null;
     index = i;
     final item = items[i];
-    final isReplay = _played.contains(item.track.id);
-    if (isReplay) _record(item.track, Signal.replay);
+    if (_played.contains(item.track.id)) _record(item.track, Signal.replay);
     _played.add(item.track.id);
     _maxListened = Duration.zero;
-    _completedCurrent = false;
+    _scoredCurrent = false;
     position.value = Duration.zero;
     duration.value = null;
     _notify();
     _publish();
 
     if (items.length - i <= prefetchThreshold) unawaited(_loadMore());
-    if (i + 1 < items.length) unawaited(audio.preload(items[i + 1].track));
-
+    if (fromEngine) return;
     try {
-      await audio.play(item.track);
+      await audio.playAt(i);
     } catch (_) {
       item.failed = true;
       _notify();
@@ -186,21 +196,37 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     if (p > _maxListened) _maxListened = p;
   }
 
-  void _onCompleted(String trackId) {
+  /// 原生队列自己接到了第 [i] 首：上一首是完整听完的。
+  void _onAutoAdvance(int i) {
+    if (i == index || i >= items.length) return;
+    final previous = current;
+    if (previous != null && !previous.failed && !_scoredCurrent) {
+      _record(previous.track, Signal.complete);
+    }
+    _scoredCurrent = true;
+    unawaited(_activate(i, fromEngine: true));
+  }
+
+  /// 队列最后一首也播完了：记一次听完，进入「等下一批」，到了自动接着播。
+  void _onQueueEnd() {
     final item = current;
-    // 切歌瞬间旧播放器补发的「放完」：不是当前这首，忽略。
-    if (item == null || item.track.id != trackId || _completedCurrent) return;
-    _completedCurrent = true;
-    _record(item.track, Signal.complete);
-    // 直接切歌，不等界面翻页：锁屏时界面不绘制，翻页动画根本不会跑。
-    // 如果已经是最后一张，会进入「等下一批」状态，到了自动接着播。
-    if (autoAdvance) unawaited(goTo(index + 1));
+    if (item == null || _scoredCurrent) return;
+    if (!item.failed) _record(item.track, Signal.complete);
+    _scoredCurrent = true;
+    unawaited(goTo(index + 1));
+  }
+
+  /// 第 [i] 首加载失败。原生层会自动跳过；连续失败太多时会停下，卡片上提示。
+  void _onError(int i) {
+    if (i < 0 || i >= items.length) return;
+    items[i].failed = true;
+    _notify();
   }
 
   /// 离开当前歌：放完的已经记过了，没放完的按听了多久打分。
   void _recordLeave() {
     final item = current;
-    if (item == null || _completedCurrent || item.failed) return;
+    if (item == null || _scoredCurrent || item.failed) return;
     final total = duration.value ?? previewLength;
     _record(item.track, signalForListen(_maxListened, total));
   }
@@ -261,18 +287,18 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     if (!isLiked(t)) await toggleLike(t);
   }
 
-  /// 不感兴趣：拉黑歌手，移除后面同歌手的歌，并请求翻到下一张。
+  /// 不感兴趣：拉黑歌手，移除后面同歌手的歌，并切到下一首。
   void dislike(FeedItem item) {
     _record(item.track, Signal.dislike);
-    _completedCurrent = true; // 已经记过强负反馈，离开时不再重复记分。
     final at = items.indexOf(item);
-    final rest = items
-        .sublist(at + 1)
-        .where((other) => other.track.artist != item.track.artist)
-        .toList();
-    items
-      ..removeRange(at + 1, items.length)
-      ..addAll(rest);
+    if (at == index) _scoredCurrent = true;
+    // 从后往前删，原生队列同步删同一位置，序号才不会错位。
+    for (var j = items.length - 1; j > at; j--) {
+      if (items[j].track.artist == item.track.artist) {
+        items.removeAt(j);
+        unawaited(_guard(audio.removeAt(j)));
+      }
+    }
     _notify();
     if (items.length - at <= prefetchThreshold) unawaited(_loadMore());
     if (at == index) unawaited(goTo(at + 1));
@@ -286,11 +312,12 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     await store.saveNotes(_notes);
   }
 
-  /// 从「我喜欢」里点一首：插到当前位置后面并请求跳过去。
+  /// 从「我喜欢」里点一首：插到当前位置后面，返回插入的位置。
   int insertNext(Track t) {
     recommender.markSeen(t);
     final at = (index + 1).clamp(0, items.length);
     items.insert(at, FeedItem(t, '来自我喜欢'));
+    unawaited(_guard(audio.insert(at, t)));
     _notify();
     return at;
   }
@@ -306,6 +333,11 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     await store.resetProfile();
     _notify();
   }
+
+  /// 队列同步失败只记日志，不让异常冒泡成未捕获错误。
+  Future<void> _guard(Future<void> op) => op.catchError((Object e) {
+        debugPrint('播放队列同步失败：$e');
+      });
 
   void _notify() {
     if (!_disposed) notifyListeners();

@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shuage/data/track_source.dart';
+import 'package:shuage/models/track.dart';
 import 'package:shuage/recommend/recommender.dart';
 import 'package:shuage/recommend/taste_profile.dart';
 
@@ -138,6 +139,75 @@ void main() {
     test('rethrows when every attempt fails', () async {
       final rec = Recommender(source: FailingSource(), profile: TasteProfile(), seeds: ['s']);
       expect(rec.nextBatch(), throwsA(isA<TrackSourceException>()));
+    });
+  
+    group('reserve', () {
+      List<Track> pool(String prefix, int n) =>
+          [for (var i = 0; i < n; i++) track('$prefix$i', artist: '$prefix$i')];
+
+      test('leftovers from a search are kept as reserve', () async {
+        final rec = Recommender(
+          source: FakeSource({}, fallback: pool('x', 20)),
+          profile: TasteProfile(),
+          seeds: ['s'],
+        );
+        final batch = await rec.nextBatch(size: 8);
+        expect(batch, hasLength(8));
+        expect(rec.reserveSize, 12);
+      });
+
+      test('network error falls back to reserve immediately', () async {
+        final source = FlakySource(0, pool('x', 20));
+        final rec = Recommender(source: source, profile: TasteProfile(), seeds: ['s']);
+        final first = await rec.nextBatch(size: 8);
+        source.failures = 99;
+        final second = await rec.nextBatch(size: 8);
+        expect(second, hasLength(8));
+        // 不和第一批重复，理由沿用当初的搜索词。
+        final firstIds = {for (final r in first) r.track.id};
+        expect(second.every((r) => !firstIds.contains(r.track.id)), isTrue);
+        expect(second.first.reason, '热门推荐：s');
+        expect(source.failures, 98, reason: '有备用时网络出错不再重试');
+      });
+
+      test('empty search results fall back to reserve', () async {
+        final source = SequenceSource([pool('x', 20)]); // 之后都返回空
+        final rec = Recommender(source: source, profile: TasteProfile(), seeds: ['s']);
+        await rec.nextBatch(size: 8);
+        final second = await rec.nextBatch(size: 8);
+        expect(second, hasLength(8));
+      });
+
+      test('reserve skips artists blocked after it was stashed', () async {
+        final source = FlakySource(0, [
+          for (var i = 0; i < 4; i++) track('ok$i', artist: 'Ok$i'),
+          for (var i = 0; i < 6; i++) track('bad$i', artist: 'Bad'),
+        ]);
+        final profile = TasteProfile();
+        final rec = Recommender(
+            source: source, profile: profile, seeds: ['s'], maxPerArtist: 1);
+        await rec.nextBatch(size: 2);
+        profile.record(track('z', artist: 'Bad'), Signal.dislike);
+        source.failures = 99;
+        final batch = await rec.nextBatch(size: 8);
+        expect(batch.every((r) => r.track.artist != 'Bad'), isTrue);
+      });
+
+      test('throws only when both network and reserve are empty', () async {
+        final rec = Recommender(source: FailingSource(), profile: TasteProfile(), seeds: ['s']);
+        expect(rec.nextBatch(), throwsA(isA<TrackSourceException>()));
+      });
+
+      test('reserve is capped', () async {
+        final source = SequenceSource([
+          for (var b = 0; b < 4; b++) pool('b${b}_', 30),
+        ]);
+        final rec = Recommender(source: source, profile: TasteProfile(), seeds: ['s']);
+        for (var b = 0; b < 4; b++) {
+          await rec.nextBatch(size: 2);
+        }
+        expect(rec.reserveSize, Recommender.maxReserve);
+      });
     });
   });
 }

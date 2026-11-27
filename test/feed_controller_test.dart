@@ -14,8 +14,7 @@ void main() {
   late FakeAudio audio;
   late FeedController c;
 
-  Future<FeedController> build(List<String> artists,
-      {bool autoAdvance = true}) async {
+  Future<FeedController> build(List<String> artists) async {
     audio = FakeAudio();
     var n = 0;
     final source = FakeSource({}, fallback: [
@@ -31,19 +30,19 @@ void main() {
       ),
       audio: audio,
       store: await memoryStore(),
-      autoAdvance: autoAdvance,
       prefetchThreshold: 0,
     );
     return c;
   }
 
-  test('init loads a batch, plays the first and preloads the second', () async {
+  test('init loads a batch into the native queue and plays the first', () async {
     await build(['A', 'B', 'C']);
     await c.init();
     await settle();
     expect(c.items, hasLength(3));
+    // 整批都进了原生队列，播完由原生层自己接下一首。
+    expect(audio.queueIds, [for (final i in c.items) i.track.id]);
     expect(audio.played, [c.items[0].track.id]);
-    expect(audio.preloaded, [c.items[1].track.id]);
     expect(c.playing.value, isTrue);
   });
 
@@ -78,33 +77,45 @@ void main() {
     expect(c.profile.artists[first.artist], signalWeights[Signal.complete]);
   });
 
-  test('completion plays the next song by itself, without the UI', () async {
-    // 锁屏时界面不绘制、不翻页，只有控制器自己切歌才能连播。
+  test('native auto-advance moves the feed along, without the UI', () async {
+    // 锁屏时界面不绘制、不翻页：原生队列自己接下一首，控制器跟上。
     await build(['A', 'B']);
     await c.init();
     await settle();
     final first = c.items[0].track;
     final second = c.items[1].track;
-    audio.complete();
-    // 切歌瞬间旧播放器补发的「放完」：不应把新歌当成放完而连跳两首。
-    audio.completeStale(first.id);
+    audio.finish();
     await settle();
     expect(audio.played, [first.id, second.id]);
     expect(c.index, 1);
     expect(c.profile.artists[first.artist], signalWeights[Signal.complete]);
-    // 界面随后翻到同一页时不应重复触发。
+    // 界面随后翻到同一页时不应重复跳转或计分。
     await c.onPageChanged(1);
     expect(audio.played, [first.id, second.id]);
+    expect(c.profile.artists[first.artist], signalWeights[Signal.complete]);
   });
 
-  test('no auto advance when disabled', () async {
-    await build(['A', 'B'], autoAdvance: false);
+  test('an echo of our own jump is not treated as auto-advance', () async {
+    await build(['A', 'B', 'C']);
     await c.init();
     await settle();
-    audio.complete();
+    await c.goTo(2);
+    audio.advance$.add(2); // 原生层迟到的回声
     await settle();
-    expect(audio.played, hasLength(1));
-    expect(c.index, 0);
+    expect(c.index, 2);
+    expect(audio.played, [c.items[0].track.id, c.items[2].track.id]);
+  });
+
+  test('a native load error is skipped without scoring the broken song', () async {
+    await build(['A', 'B']);
+    await c.init();
+    await settle();
+    final broken = c.items[0].track;
+    audio.failAndSkip(0);
+    await settle();
+    expect(c.items[0].failed, isTrue);
+    expect(c.index, 1);
+    expect(c.profile.artists[broken.artist], isNull);
   });
 
   test('completing the last song waits for the next batch, then keeps playing', () async {
@@ -122,7 +133,7 @@ void main() {
     await c.init();
     await settle();
     source.gate = Completer<void>();
-    audio.complete();
+    audio.finish(); // 原生队列播完了最后一首
     await settle();
     expect(c.index, 1);
     expect(c.current, isNull);
@@ -160,6 +171,8 @@ void main() {
       ...before.skip(1).where((a) => a != first.track.artist),
     ];
     expect(c.items.map((i) => i.track.artist), expected);
+    // 原生队列同步删除，两边一一对应。
+    expect(audio.queueIds, [for (final i in c.items) i.track.id]);
     expect(c.profile.blockedArtists, {first.track.artist});
     // 直接切到下一首，离开时也不再重复记一次跳过。
     expect(c.index, 1);
@@ -247,6 +260,11 @@ void main() {
     final at = c.insertNext(track('liked', artist: 'Z'));
     expect(at, 1);
     expect(c.items[1].reason, '来自我喜欢');
+    expect(audio.queueIds, [for (final i in c.items) i.track.id]);
+    // 原生层播完当前这首，接的就是插进来的这首。
+    audio.finish();
+    await settle();
+    expect(c.current!.track.id, 'liked');
   });
 
   test('network failure surfaces an error and retry recovers', () async {
@@ -372,12 +390,64 @@ void main() {
 
     test('songs keep playing back to back while locked', () async {
       await buildWithSession(['A', 'B', 'C']);
-      audio.complete();
+      audio.finish();
       await settle();
-      audio.complete();
+      audio.finish();
       await settle();
       expect(audio.played, [for (final i in c.items) i.track.id]);
       expect(session.last.track, c.items[2].track);
     });
+  });
+
+  test('a new batch arriving after the queue ran dry keeps playing', () async {
+    audio = FakeAudio();
+    final source = SequenceSource([
+      [track('a', artist: 'A'), track('b', artist: 'B')],
+      [track('c', artist: 'C')],
+    ]);
+    c = FeedController(
+      recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
+      audio: audio,
+      store: await memoryStore(),
+      prefetchThreshold: 0,
+    );
+    await c.init();
+    await settle();
+    source.gate = Completer<void>();
+    audio.finish();
+    audio.finish(); // b 也播完，队列空了
+    await settle();
+    source.gate!.complete();
+    await settle();
+    await settle();
+    // 头两首的顺序由推荐打分决定，不固定；第三首是新到的那批。
+    expect(audio.played, hasLength(3));
+    expect(audio.played.last, 'c');
+    expect(audio.queueIds, audio.played);
+  });
+
+  test('prefetched batches are appended while the current song plays', () async {
+    audio = FakeAudio();
+    final source = SequenceSource([
+      [track('a', artist: 'A'), track('b', artist: 'B')],
+      [track('c', artist: 'C'), track('d', artist: 'D')],
+    ]);
+    c = FeedController(
+      recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
+      audio: audio,
+      store: await memoryStore(),
+      prefetchThreshold: 3,
+    );
+    await c.init();
+    for (var i = 0; i < 4; i++) {
+      await settle();
+    }
+    // 一开始就不足三首，下一批已经进了原生队列，原生层可以一路播下去。
+    expect(audio.queueIds.toSet(), {'a', 'b', 'c', 'd'});
+    for (var i = 0; i < 3; i++) {
+      audio.finish();
+      await settle();
+    }
+    expect(audio.played, hasLength(4));
   });
 }

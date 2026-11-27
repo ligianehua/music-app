@@ -45,10 +45,23 @@ class Recommender {
   final Random _random;
   final Set<String> _seen = {};
 
+  /// 每次搜 30 首只用一小部分，剩下的留作备用。
+  /// 网络出错或拉回空结果时直接从这里出歌，刷歌流不会断粮。
+  final List<Recommendation> _reserve = [];
+
+  /// 备用池上限，超出时丢掉最早的。
+  static const maxReserve = 60;
+
+  int get reserveSize => _reserve.length;
+
   /// 已经推过的歌不再推。外部插入的歌也要登记，避免重复。
   void markSeen(Track t) => _seen.add(t.id);
 
-  /// 拉下一批推荐。某个搜索词没结果时会换词重试，最多 [maxAttempts] 次。
+  /// 拉下一批推荐。
+  ///
+  /// - 某个搜索词没结果：换词重试，最多 [maxAttempts] 次；
+  /// - 网络出错：有备用歌就立刻用备用，没有才重试；
+  /// - 都不行：用备用歌兜底，备用也空了才报错。
   Future<List<Recommendation>> nextBatch({
     int size = 8,
     int maxAttempts = 3,
@@ -62,6 +75,8 @@ class Recommender {
         found = await source.search(pick.term, limit: 30);
       } on TrackSourceException catch (e) {
         lastError = e;
+        // 网络问题换词也没用，别让用户干等重试。
+        if (_reserve.isNotEmpty) break;
         continue;
       }
       final batch = _rank(found, size);
@@ -69,11 +84,41 @@ class Recommender {
         for (final t in batch) {
           _seen.add(t.id);
         }
+        _stash(found, pick.reason);
         return [for (final t in batch) Recommendation(t, pick.reason)];
       }
     }
+    final fallback = _takeFromReserve(size);
+    if (fallback.isNotEmpty) return fallback;
     if (lastError != null) throw lastError;
     return const [];
+  }
+
+  /// 把这次没用上的歌存进备用池。
+  void _stash(List<Track> found, String reason) {
+    final known = {for (final r in _reserve) r.track.id};
+    for (final t in found) {
+      if (_seen.contains(t.id) || known.contains(t.id)) continue;
+      known.add(t.id);
+      _reserve.add(Recommendation(t, reason));
+    }
+    if (_reserve.length > maxReserve) {
+      _reserve.removeRange(0, _reserve.length - maxReserve);
+    }
+  }
+
+  /// 从备用池按当前口味挑一批。口味可能已经变了，所以用的时候才排序。
+  List<Recommendation> _takeFromReserve(int size) {
+    _reserve.removeWhere(
+        (r) => _seen.contains(r.track.id) || profile.isBlocked(r.track));
+    final reasons = {for (final r in _reserve) r.track.id: r.reason};
+    final batch = _rank([for (final r in _reserve) r.track], size);
+    final ids = {for (final t in batch) t.id};
+    _reserve.removeWhere((r) => ids.contains(r.track.id));
+    for (final t in batch) {
+      _seen.add(t.id);
+    }
+    return [for (final t in batch) Recommendation(t, reasons[t.id]!)];
   }
 
   List<Track> _rank(List<Track> found, int size) {

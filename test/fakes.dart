@@ -44,16 +44,25 @@ class FailingSource implements TrackSource {
       throw TrackSourceException('offline');
 }
 
-/// 记录调用、可手动推进的假播放器。
+/// 模拟原生播放队列的假播放器，可手动让当前这首「播完」。
 class FakeAudio implements AudioEngine {
   final position$ = StreamController<Duration>.broadcast(sync: true);
   final duration$ = StreamController<Duration?>.broadcast(sync: true);
   final playing$ = StreamController<bool>.broadcast(sync: true);
-  final completed$ = StreamController<String>.broadcast(sync: true);
+  final advance$ = StreamController<int>.broadcast(sync: true);
+  final queueEnd$ = StreamController<void>.broadcast(sync: true);
+  final error$ = StreamController<int>.broadcast(sync: true);
+
+  /// 原生队列内容。
+  final List<Track> queue = [];
+  int current = -1;
+
+  /// 实际开始播放过的歌，按顺序。
   final List<String> played = [];
-  final List<String> preloaded = [];
   final Set<String> failIds = {};
   bool isPlaying = false;
+
+  List<String> get queueIds => [for (final t in queue) t.id];
 
   @override
   Stream<Duration> get positionStream => position$.stream;
@@ -62,7 +71,11 @@ class FakeAudio implements AudioEngine {
   @override
   Stream<bool> get playingStream => playing$.stream;
   @override
-  Stream<String> get completedStream => completed$.stream;
+  Stream<int> get autoAdvanceStream => advance$.stream;
+  @override
+  Stream<void> get queueEndStream => queueEnd$.stream;
+  @override
+  Stream<int> get errorStream => error$.stream;
   @override
   Duration position = Duration.zero;
 
@@ -71,22 +84,52 @@ class FakeAudio implements AudioEngine {
     position$.add(p);
   }
 
-  /// 当前（最后开始播的）这首放完。
-  void complete() => completed$.add(played.last);
-
-  /// 模拟某首旧歌迟到的「放完」事件。
-  void completeStale(String id) => completed$.add(id);
-
-  @override
-  Future<void> preload(Track track) async => preloaded.add(track.id);
-
-  @override
-  Future<void> play(Track track) async {
-    if (failIds.contains(track.id)) throw Exception('bad url');
-    played.add(track.id);
+  void _start(int i) {
+    current = i;
+    played.add(queue[i].id);
+    position = Duration.zero;
     duration$.add(const Duration(seconds: 30));
     isPlaying = true;
     playing$.add(true);
+  }
+
+  /// 当前这首播完：原生层自己接下一首，或者报告队列播完。
+  void finish() {
+    if (current + 1 < queue.length) {
+      _start(current + 1);
+      advance$.add(current);
+    } else {
+      isPlaying = false;
+      playing$.add(false);
+      queueEnd$.add(null);
+    }
+  }
+
+  /// 原生层报告第 [i] 首加载失败，并像 maxSkipsOnError 那样自动跳过。
+  void failAndSkip(int i) {
+    error$.add(i);
+    finish();
+  }
+
+  @override
+  Future<void> append(List<Track> tracks) async => queue.addAll(tracks);
+
+  @override
+  Future<void> insert(int index, Track track) async {
+    queue.insert(index, track);
+    if (index <= current) current++;
+  }
+
+  @override
+  Future<void> removeAt(int index) async {
+    queue.removeAt(index);
+    if (index < current) current--;
+  }
+
+  @override
+  Future<void> playAt(int index) async {
+    if (failIds.contains(queue[index].id)) throw Exception('bad url');
+    _start(index);
   }
 
   @override

@@ -91,7 +91,7 @@ void main() {
   testWidgets('pages follow the controller when a song finishes', (tester) async {
     await pumpFeed(tester);
     final second = c.items[1].track;
-    audio.complete();
+    audio.finish();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
     expect(c.index, 1);

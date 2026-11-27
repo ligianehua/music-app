@@ -48,16 +48,19 @@ class DemoLyricsSource implements LyricsSource {
       ]);
 }
 
-/// 用计时器假装在播 30 秒。
+/// 用计时器模拟一个原生播放队列，每首 30 秒，播完自动接下一首。
 class DemoAudioEngine implements AudioEngine {
   static const length = Duration(seconds: 30);
   final _position = StreamController<Duration>.broadcast();
   final _duration = StreamController<Duration?>.broadcast();
   final _playing = StreamController<bool>.broadcast();
-  final _completed = StreamController<String>.broadcast();
+  final _autoAdvance = StreamController<int>.broadcast();
+  final _queueEnd = StreamController<void>.broadcast();
+  final _errors = StreamController<int>.broadcast();
+  final List<Track> _queue = [];
+  int _current = -1;
   Timer? _timer;
   Duration _pos = Duration.zero;
-  String _trackId = '';
 
   @override
   Stream<Duration> get positionStream => _position.stream;
@@ -66,16 +69,32 @@ class DemoAudioEngine implements AudioEngine {
   @override
   Stream<bool> get playingStream => _playing.stream;
   @override
-  Stream<String> get completedStream => _completed.stream;
+  Stream<int> get autoAdvanceStream => _autoAdvance.stream;
+  @override
+  Stream<void> get queueEndStream => _queueEnd.stream;
+  @override
+  Stream<int> get errorStream => _errors.stream;
   @override
   Duration get position => _pos;
 
   @override
-  Future<void> preload(Track track) async {}
+  Future<void> append(List<Track> tracks) async => _queue.addAll(tracks);
 
   @override
-  Future<void> play(Track track) async {
-    _trackId = track.id;
+  Future<void> insert(int index, Track track) async {
+    _queue.insert(index, track);
+    if (index <= _current) _current++;
+  }
+
+  @override
+  Future<void> removeAt(int index) async {
+    _queue.removeAt(index);
+    if (index < _current) _current--;
+  }
+
+  @override
+  Future<void> playAt(int index) async {
+    _current = index;
     _pos = Duration.zero;
     _duration.add(length);
     await resume();
@@ -86,16 +105,24 @@ class DemoAudioEngine implements AudioEngine {
     _timer?.cancel();
     if (_pos >= length) _pos = Duration.zero;
     _playing.add(true);
-    _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      _pos = Duration(
-          milliseconds: min(_pos.inMilliseconds + 200, length.inMilliseconds));
-      _position.add(_pos);
-      if (_pos >= length) {
-        _timer?.cancel();
-        _playing.add(false);
-        _completed.add(_trackId);
-      }
-    });
+    _timer = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
+  }
+
+  void _tick() {
+    _pos = Duration(
+        milliseconds: min(_pos.inMilliseconds + 200, length.inMilliseconds));
+    _position.add(_pos);
+    if (_pos < length) return;
+    if (_current + 1 < _queue.length) {
+      _current++;
+      _pos = Duration.zero;
+      _duration.add(length);
+      _autoAdvance.add(_current);
+    } else {
+      _timer?.cancel();
+      _playing.add(false);
+      _queueEnd.add(null);
+    }
   }
 
   @override
