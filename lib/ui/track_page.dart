@@ -1,0 +1,484 @@
+import 'dart:ui' show ImageFilter;
+
+import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
+
+import '../feed/feed_controller.dart';
+import '../lyrics/lrc.dart';
+import 'artwork.dart';
+import 'heart_burst.dart';
+import 'lyrics_panel.dart';
+import 'notes_sheet.dart';
+
+const _heartRed = Color(0xFFFF2D55);
+
+/// 刷歌流里的一整屏。
+///
+/// 单击暂停/继续，双击红心（只加不减，和短视频一致），右侧操作栏，底部信息和进度。
+class TrackPage extends StatefulWidget {
+  const TrackPage({
+    super.key,
+    required this.item,
+    required this.controller,
+    required this.active,
+  });
+
+  final FeedItem item;
+  final FeedController controller;
+
+  /// 是否是当前正在播放的那一屏。
+  final bool active;
+
+  @override
+  State<TrackPage> createState() => _TrackPageState();
+}
+
+class _TrackPageState extends State<TrackPage>
+    with SingleTickerProviderStateMixin {
+  late final _drift = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 18),
+  )..repeat(reverse: true);
+  final List<(Key, Offset)> _bursts = [];
+  Offset _lastDoubleTap = Offset.zero;
+  late Future<Lyrics?> _lyrics =
+      widget.controller.lyricsFor(widget.item.track);
+
+  FeedController get c => widget.controller;
+
+  @override
+  void didUpdateWidget(TrackPage old) {
+    super.didUpdateWidget(old);
+    if (old.item.track != widget.item.track) {
+      _lyrics = c.lyricsFor(widget.item.track);
+    }
+  }
+
+  @override
+  void dispose() {
+    _drift.dispose();
+    super.dispose();
+  }
+
+  void _onDoubleTap() {
+    HapticFeedback.lightImpact();
+    setState(() => _bursts.add((UniqueKey(), _lastDoubleTap)));
+    c.like(widget.item.track);
+  }
+
+  void _share() {
+    final t = widget.item.track;
+    final text = '我在刷歌刷到了《${t.title}》- ${t.artist}'
+        '${t.storeUrl == null ? '' : '\n${t.storeUrl}'}';
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('分享文案已复制，去粘贴给朋友吧'),
+        duration: Duration(seconds: 2),
+      ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.item.track;
+    final media = MediaQuery.of(context);
+    final artSize = (media.size.width * 0.72).clamp(180.0, 340.0).toDouble();
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 1. 模糊封面做背景，再压一层暗色渐变保证文字可读。
+        ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+          child: Transform.scale(scale: 1.3, child: Artwork(track: t)),
+        ),
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x66000000), Color(0x33000000), Color(0xCC000000)],
+              stops: [0, 0.45, 1],
+            ),
+          ),
+        ),
+
+        // 2. 整屏手势：单击暂停，双击红心。
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: c.togglePlay,
+          onDoubleTapDown: (d) => _lastDoubleTap = d.localPosition,
+          onDoubleTap: _onDoubleTap,
+        ),
+
+        // 3. 中部：漂移的封面 + 歌词。
+        // 中部整体不接收触摸：上滑永远是切歌，点按交给下面的整屏手势。
+        IgnorePointer(
+          child: Padding(
+            padding: EdgeInsets.only(top: media.padding.top + 72),
+            child: Column(
+              children: [
+                ValueListenableBuilder<bool>(
+                  valueListenable: c.playing,
+                  builder: (context, playing, _) => AnimatedScale(
+                    scale: widget.active && !playing ? 0.9 : 1,
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    child: _DriftingArt(
+                      drift: _drift,
+                      size: artSize,
+                      child: Artwork(track: t),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 120,
+                  width: media.size.width - 96,
+                  child: FutureBuilder<Lyrics?>(
+                    future: _lyrics,
+                    builder: (context, snap) {
+                      final lyrics = snap.data;
+                      if (snap.connectionState != ConnectionState.done) {
+                        return const _LyricsHint('歌词加载中…');
+                      }
+                      if (lyrics == null) {
+                        return const _LyricsHint('纯享版 · 暂无歌词');
+                      }
+                      return ValueListenableBuilder<Duration?>(
+                        valueListenable: c.duration,
+                        builder: (context, d, _) => LyricsPanel(
+                          lyrics: lyrics,
+                          position: c.position,
+                          // 只有在播整首歌（时长对得上）时才逐行同步。
+                          synced: widget.active &&
+                              d != null &&
+                              t.durationMs > 0 &&
+                              (d.inMilliseconds - t.durationMs).abs() < 3000,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // 4. 暂停图标。
+        if (widget.active)
+          ValueListenableBuilder<bool>(
+            valueListenable: c.playing,
+            builder: (context, playing, _) => IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: playing || widget.item.failed ? 0 : 1,
+                duration: const Duration(milliseconds: 180),
+                child: const Center(
+                  child: Icon(Icons.play_arrow_rounded,
+                      size: 96, color: Colors.white70),
+                ),
+              ),
+            ),
+          ),
+
+        if (widget.item.failed)
+          const IgnorePointer(
+            child: Center(
+              child: _Pill('这首暂时放不了，上滑下一首 ↑'),
+            ),
+          ),
+
+        // 5. 右侧操作栏。
+        Positioned(
+          right: 8,
+          bottom: media.padding.bottom + 150,
+          child: ListenableBuilder(
+            listenable: c,
+            builder: (context, _) {
+              final liked = c.isLiked(t);
+              final notes = c.notesFor(t).length;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ActionButton(
+                    icon: liked ? Icons.favorite : Icons.favorite_border,
+                    color: liked ? _heartRed : Colors.white,
+                    label: liked ? '已喜欢' : '喜欢',
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      c.toggleLike(t);
+                    },
+                  ),
+                  _ActionButton(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    label: notes == 0 ? '心得' : '$notes',
+                    onTap: () => showNotesSheet(context, c, t),
+                  ),
+                  _ActionButton(
+                    icon: Icons.ios_share_rounded,
+                    label: '分享',
+                    onTap: _share,
+                  ),
+                  _ActionButton(
+                    icon: Icons.not_interested_rounded,
+                    label: '不感兴趣',
+                    onTap: () {
+                      c.dislike(widget.item);
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(SnackBar(
+                          content: Text('好的，少推 ${t.artist}'),
+                          duration: const Duration(seconds: 2),
+                        ));
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+
+        // 6. 底部信息 + 进度条。
+        Positioned(
+          left: 20,
+          right: 20,
+          bottom: media.padding.bottom + 20,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _Pill(widget.item.reason, small: true),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.only(right: 64),
+                child: Text(
+                  t.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.only(right: 64),
+                child: Text(
+                  [t.artist, if (t.album.isNotEmpty) t.album].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, color: Colors.white70),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (widget.active)
+                _ProgressBar(controller: c)
+              else
+                const SizedBox(height: 32),
+            ],
+          ),
+        ),
+
+        // 7. 红心特效层。
+        for (final (key, at) in _bursts)
+          HeartBurst(
+            key: key,
+            at: at,
+            onDone: () => setState(() => _bursts.removeWhere((b) => b.$1 == key)),
+          ),
+      ],
+    );
+  }
+}
+
+/// 缓慢放大、平移的封面，营造「动态封面」的感觉。
+class _DriftingArt extends StatelessWidget {
+  const _DriftingArt({
+    required this.drift,
+    required this.size,
+    required this.child,
+  });
+
+  final Animation<double> drift;
+  final double size;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(blurRadius: 40, offset: Offset(0, 16), color: Colors.black54),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: AnimatedBuilder(
+        animation: drift,
+        builder: (context, child) {
+          final v = Curves.easeInOut.transform(drift.value);
+          return Transform.translate(
+            offset: Offset((v - 0.5) * 16, (0.5 - v) * 10),
+            child: Transform.scale(scale: 1.08 + v * 0.06, child: child),
+          );
+        },
+        child: child,
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color = Colors.white,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 32,
+        child: SizedBox(
+          width: 64,
+          height: 72,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
+                child: Icon(icon,
+                    key: ValueKey(icon),
+                    size: 32,
+                    color: color,
+                    shadows: const [Shadow(blurRadius: 8, color: Colors.black45)]),
+              ),
+              const SizedBox(height: 4),
+              Text(label,
+                  style: const TextStyle(fontSize: 11, color: Colors.white)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill(this.text, {this.small = false});
+  final String text;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+          horizontal: small ? 10 : 16, vertical: small ? 4 : 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: small ? 12 : 15, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class _LyricsHint extends StatelessWidget {
+  const _LyricsHint(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Text(text,
+            style: const TextStyle(color: Colors.white54, fontSize: 14)),
+      );
+}
+
+/// 可拖动的细进度条。拖动时只改本地值，松手才 seek，避免拖动时来回跳。
+class _ProgressBar extends StatefulWidget {
+  const _ProgressBar({required this.controller});
+  final FeedController controller;
+
+  @override
+  State<_ProgressBar> createState() => _ProgressBarState();
+}
+
+class _ProgressBarState extends State<_ProgressBar> {
+  double? _dragging;
+
+  String _fmt(Duration d) =>
+      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    return ValueListenableBuilder<Duration?>(
+      valueListenable: c.duration,
+      builder: (context, total, _) => ValueListenableBuilder<Duration>(
+        valueListenable: c.position,
+        builder: (context, pos, _) {
+          final max = (total ?? c.previewLength).inMilliseconds.toDouble();
+          final value = (_dragging ?? pos.inMilliseconds.toDouble())
+              .clamp(0.0, max <= 0 ? 1.0 : max)
+              .toDouble();
+          return Row(
+            children: [
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 2,
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 5),
+                    overlayShape:
+                        const RoundSliderOverlayShape(overlayRadius: 14),
+                    activeTrackColor: Colors.white,
+                    inactiveTrackColor: Colors.white24,
+                    thumbColor: Colors.white,
+                  ),
+                  child: Slider(
+                    value: value,
+                    max: max <= 0 ? 1 : max,
+                    onChanged: (v) => setState(() => _dragging = v),
+                    onChangeEnd: (v) {
+                      c.seek(Duration(milliseconds: v.round()));
+                      setState(() => _dragging = null);
+                    },
+                  ),
+                ),
+              ),
+              Text(
+                '${_fmt(Duration(milliseconds: value.round()))} / '
+                '${_fmt(Duration(milliseconds: max.round()))}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.white70,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
