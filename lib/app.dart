@@ -13,6 +13,7 @@ import 'data/lyrics_source.dart';
 import 'data/track_source.dart';
 import 'data/trending_source.dart';
 import 'feed/feed_controller.dart';
+import 'lyrics/offset_store.dart';
 import 'recommend/recommender.dart';
 import 'social/comment.dart';
 import 'ui/auth_page.dart';
@@ -29,6 +30,7 @@ class AppServices {
     this.trending,
     this.lyrics,
     this.comments,
+    this.lyricsOffsets,
     this.session,
   });
 
@@ -41,6 +43,7 @@ class AppServices {
   final TrendingSource? trending;
   final LyricsSource? lyrics;
   final CommentStore? comments;
+  final LyricsOffsetStore? lyricsOffsets;
   final NowPlayingSession? session;
 }
 
@@ -119,6 +122,7 @@ class _AuthGateState extends State<AuthGate> {
       store: store,
       comments: s.comments,
       lyricsSource: s.lyrics,
+      lyricsOffsets: s.lyricsOffsets,
       session: s.session,
     );
     _feed = feed;

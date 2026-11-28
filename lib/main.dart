@@ -11,6 +11,7 @@ import 'data/itunes_source.dart';
 import 'data/lyrics_source.dart';
 import 'data/trending_source.dart';
 import 'demo/demo_mode.dart';
+import 'lyrics/offset_store.dart';
 import 'social/comment.dart';
 
 Future<void> main() async {
@@ -23,6 +24,7 @@ Future<void> main() async {
     trending: kDemoMode ? null : AppleChartSource(),
     lyrics: kDemoMode ? DemoLyricsSource() : LrclibSource(),
     comments: LocalCommentStore(prefs),
+    lyricsOffsets: LyricsOffsetStore(prefs),
     audioFactory: kDemoMode ? DemoAudioEngine.new : JustAudioEngine.new,
     session: await _initMediaSession(),
   );

@@ -84,7 +84,23 @@ class _TrackPageState extends State<TrackPage>
   Widget build(BuildContext context) {
     final t = widget.item.track;
     final media = MediaQuery.of(context);
-    final artSize = (media.size.width * 0.72).clamp(180.0, 340.0).toDouble();
+    // 中部可用高度：减去顶栏和底部歌曲信息。小屏手机上封面跟着缩，
+    // 保证封面、歌词、底部信息三者不重叠。
+    const topSpace = 72.0;
+    const bottomInfo = 190.0;
+    const lyricsLines = 4;
+    const lyricsHeight =
+        LyricsPanel.lineHeight * lyricsLines + LyricsPanel.hintHeight;
+    final available = media.size.height -
+        media.padding.top -
+        media.padding.bottom -
+        topSpace -
+        bottomInfo;
+    final artSize = [
+      media.size.width * 0.72,
+      340.0,
+      available - lyricsHeight - 20,
+    ].reduce((a, b) => a < b ? a : b).clamp(120.0, 340.0).toDouble();
 
     return Stack(
       fit: StackFit.expand,
@@ -114,13 +130,14 @@ class _TrackPageState extends State<TrackPage>
         ),
 
         // 3. 中部：漂移的封面 + 歌词。
-        // 中部整体不接收触摸：上滑永远是切歌，点按交给下面的整屏手势。
-        IgnorePointer(
-          child: Padding(
-            padding: EdgeInsets.only(top: media.padding.top + 72),
-            child: Column(
-              children: [
-                ValueListenableBuilder<bool>(
+        // 3. 中部：封面不接收触摸（点按交给整屏手势），歌词行可以点来校准。
+        //    竖滑不受影响：这里没有任何会抢拖动手势的组件。
+        Padding(
+          padding: EdgeInsets.only(top: media.padding.top + topSpace),
+          child: Column(
+            children: [
+              IgnorePointer(
+                child: ValueListenableBuilder<bool>(
                   valueListenable: c.playing,
                   builder: (context, playing, _) => AnimatedScale(
                     scale: widget.active && !playing ? 0.9 : 1,
@@ -133,38 +150,44 @@ class _TrackPageState extends State<TrackPage>
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
-                // 两侧各留 72：英文歌词较长，避免贴到右侧按钮栏。
-                SizedBox(
-                  height: 120,
-                  width: media.size.width - 144,
-                  child: FutureBuilder<Lyrics?>(
-                    future: _lyrics,
-                    builder: (context, snap) {
-                      final lyrics = snap.data;
-                      if (snap.connectionState != ConnectionState.done) {
-                        return const _LyricsHint('Loading lyrics…');
-                      }
-                      if (lyrics == null) {
-                        return const _LyricsHint('No lyrics available');
-                      }
-                      return ValueListenableBuilder<Duration?>(
-                        valueListenable: c.duration,
-                        builder: (context, d, _) => LyricsPanel(
+              ),
+              const SizedBox(height: 20),
+              // 两侧各留 72：英文歌词较长，避免贴到右侧按钮栏。
+              SizedBox(
+                height: lyricsHeight,
+                width: media.size.width - 144,
+                child: FutureBuilder<Lyrics?>(
+                  future: _lyrics,
+                  builder: (context, snap) {
+                    final lyrics = snap.data;
+                    if (snap.connectionState != ConnectionState.done) {
+                      return const _LyricsHint('Loading lyrics…');
+                    }
+                    if (lyrics == null) {
+                      return const _LyricsHint('No lyrics available');
+                    }
+                    return ValueListenableBuilder<Duration?>(
+                      valueListenable: c.duration,
+                      builder: (context, d, _) => ListenableBuilder(
+                        listenable: c,
+                        builder: (context, _) => LyricsPanel(
                           lyrics: lyrics,
                           position: c.position,
-                          // 只有在播整首歌（时长对得上）时才逐行同步。
-                          synced: widget.active &&
-                              d != null &&
+                          active: widget.active,
+                          // 时长和整首歌对得上，说明播的是整首，不是试听片段。
+                          fullTrack: d != null &&
                               t.durationMs > 0 &&
                               (d.inMilliseconds - t.durationMs).abs() < 3000,
+                          calibratedOffset: c.lyricsOffsetFor(t),
+                          trackDurationMs: t.durationMs,
+                          onCalibrate: (offset) => c.calibrateLyrics(t, offset),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
 
@@ -443,9 +466,11 @@ class _LyricsHint extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Text(text,
-            style: const TextStyle(color: Colors.white54, fontSize: 14)),
+  Widget build(BuildContext context) => IgnorePointer(
+        child: Center(
+          child: Text(text,
+              style: const TextStyle(color: Colors.white54, fontSize: 14)),
+        ),
       );
 }
 

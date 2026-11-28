@@ -9,6 +9,7 @@ import '../data/library_store.dart';
 import '../data/lyrics_source.dart';
 import '../data/track_source.dart';
 import '../lyrics/lrc.dart';
+import '../lyrics/offset_store.dart';
 import '../models/track.dart';
 import '../recommend/recommender.dart';
 import '../recommend/taste_profile.dart';
@@ -42,6 +43,7 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     required this.store,
     this.comments,
     this.lyricsSource,
+    this.lyricsOffsets,
     this.session,
     this.prefetchThreshold = 3,
     this.previewLength = const Duration(seconds: 30),
@@ -73,6 +75,9 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
   /// 评论仓库。为 null 时评论功能不可用。
   final CommentStore? comments;
   final LyricsSource? lyricsSource;
+
+  /// 用户校准过的歌词偏移。为 null 时不保存校准结果。
+  final LyricsOffsetStore? lyricsOffsets;
 
   /// 锁屏和通知栏。为 null 时不对接系统媒体会话。
   final NowPlayingSession? session;
@@ -417,6 +422,15 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
 
   Future<Lyrics?> lyricsFor(Track t) =>
       lyricsSource?.fetch(t) ?? Future.value(null);
+
+  /// 这首歌用户校准过的歌词偏移；没校准过为 null。
+  Duration? lyricsOffsetFor(Track t) => lyricsOffsets?.get(t.id);
+
+  /// 用户点了正在唱的那一行：记住这首歌的偏移，下次刷到直接对准。
+  Future<void> calibrateLyrics(Track t, Duration offset) async {
+    await lyricsOffsets?.set(t.id, offset);
+    _notify();
+  }
 
   /// 清空口味画像，下一批重新冷启动。
   Future<void> resetTaste() async {

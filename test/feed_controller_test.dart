@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shuage/feed/feed_controller.dart';
 import 'package:shuage/recommend/recommender.dart';
+import 'package:shuage/lyrics/offset_store.dart';
 import 'package:shuage/recommend/taste_profile.dart';
 import 'package:shuage/social/comment.dart';
 
@@ -551,5 +552,30 @@ void main() {
     await c.init();
     expect(c.loading, isFalse);
     expect(c.error, contains('boom'));
+  });
+
+  test('lyrics calibration is remembered per song', () async {
+    audio = FakeAudio();
+    final store = await memoryStore();
+    final prefs = await SharedPreferences.getInstance();
+    c = FeedController(
+      user: testUser,
+      recommender: Recommender(
+          source: FakeSource({}, fallback: [track('a')]),
+          profile: TasteProfile(),
+          seeds: ['s']),
+      audio: audio,
+      store: store,
+      lyricsOffsets: LyricsOffsetStore(prefs),
+    );
+    final t = track('a');
+    expect(c.lyricsOffsetFor(t), isNull);
+    var notified = 0;
+    c.addListener(() => notified++);
+    await c.calibrateLyrics(t, const Duration(seconds: 61));
+    expect(c.lyricsOffsetFor(t), const Duration(seconds: 61));
+    expect(notified, 1);
+    // 换一个控制器（比如重新登录）也还在。
+    expect(LyricsOffsetStore(prefs).get('a'), const Duration(seconds: 61));
   });
 }

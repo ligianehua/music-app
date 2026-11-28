@@ -37,15 +37,20 @@ class DemoSource implements TrackSource {
   }
 }
 
+/// 演示歌词：每 4 秒一行，副歌出现两次，可以演示估算同步和点按校准。
 class DemoLyricsSource implements LyricsSource {
   @override
-  Future<Lyrics?> fetch(Track track) async => Lyrics(plain: [
-        for (var i = 1; i <= 4; i++) '(demo lyrics) verse line $i',
-        for (var r = 0; r < 2; r++) ...[
-          '(demo lyrics) this is the chorus',
-          '(demo lyrics) the chorus repeats',
-        ],
-      ]);
+  Future<Lyrics?> fetch(Track track) async {
+    const texts = [
+      'verse line 1', 'verse line 2', 'verse line 3', 'verse line 4',
+      'this is the chorus', 'the chorus repeats', 'bridge line',
+      'this is the chorus', 'the chorus repeats', 'outro line',
+    ];
+    return Lyrics(synced: [
+      for (var i = 0; i < texts.length; i++)
+        LyricLine(Duration(seconds: 4 * i), '(demo) ${texts[i]}'),
+    ]);
+  }
 }
 
 /// 用计时器模拟一个原生播放队列，每首 30 秒，播完自动接下一首。
