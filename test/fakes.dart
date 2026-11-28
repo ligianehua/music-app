@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shuage/account/local_auth_service.dart';
+import 'package:shuage/account/user.dart';
 import 'package:shuage/audio/audio_engine.dart';
 import 'package:shuage/audio/now_playing.dart';
 import 'package:shuage/data/library_store.dart';
@@ -151,10 +153,23 @@ class FakeAudio implements AudioEngine {
   Future<void> dispose() async {}
 }
 
+/// 测试用的会员。
+final testUser = AppUser(
+  id: 'user-1',
+  username: '小明',
+  createdAt: DateTime(2026, 11, 1),
+  preferences: const UserPreferences(languages: {'华语'}),
+);
+
+/// 内存里的个人数据存储，属于 [testUser]。
 Future<LibraryStore> memoryStore([Map<String, Object> initial = const {}]) async {
   SharedPreferences.setMockInitialValues(initial);
-  return LibraryStore(await SharedPreferences.getInstance());
+  return LibraryStore(await SharedPreferences.getInstance(), userId: testUser.id);
 }
+
+/// 内存里的账号服务。迭代次数调低，测试跑得快。
+Future<LocalAuthService> memoryAuth() async =>
+    LocalAuthService(await SharedPreferences.getInstance(), iterations: 10);
 
 /// 每次搜索依次返回下一批；设置 [gate] 后会等它完成才返回。
 class SequenceSource implements TrackSource {

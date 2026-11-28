@@ -16,6 +16,7 @@ Future<void> showTasteSheet(BuildContext context, FeedController c) {
         final p = c.profile;
         final artists = p.topPositive(p.artists, 8);
         final genres = p.topPositive(p.genres, 6);
+        final searches = p.topPositive(p.searches, 6);
         Widget chips(List<MapEntry<String, double>> list) => Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -44,7 +45,7 @@ Future<void> showTasteSheet(BuildContext context, FeedController c) {
                         fontSize: 18,
                         fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                const Text('完整听完、红心、回听会加分；秒划、不感兴趣会减分。另有 20% 推荐用来探索新口味。',
+                const Text('听完、点赞、收藏、回听、搜索会加分；秒划、不感兴趣会减分。另有 20% 推荐用来探索新口味。',
                     style: TextStyle(color: Colors.white54, fontSize: 12)),
                 const SizedBox(height: 16),
                 if (!p.hasPreference)
@@ -61,6 +62,12 @@ Future<void> showTasteSheet(BuildContext context, FeedController c) {
                     const Text('偏好风格', style: title),
                     const SizedBox(height: 8),
                     chips(genres),
+                    const SizedBox(height: 16),
+                  ],
+                  if (searches.isNotEmpty) ...[
+                    const Text('最近搜过', style: title),
+                    const SizedBox(height: 8),
+                    chips(searches),
                     const SizedBox(height: 16),
                   ],
                 ],

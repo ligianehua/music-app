@@ -1,7 +1,10 @@
 import 'dart:math';
 
+import '../account/user.dart';
+import '../data/trending_source.dart';
 import '../data/track_source.dart';
 import '../models/track.dart';
+import 'preference_options.dart';
 import 'taste_profile.dart';
 
 /// 推荐结果，附带一句「为什么推给你」。透明的理由能让用户信任推荐，
@@ -28,8 +31,11 @@ class Recommender {
   Recommender({
     required this.source,
     required this.profile,
+    this.preferences = const UserPreferences(),
+    this.trending,
     Random? random,
     this.exploreRatio = 0.2,
+    this.viralRatio = 0.25,
     this.maxPerArtist = 2,
     List<String>? seeds,
   })  : _random = random ?? Random(),
@@ -37,7 +43,16 @@ class Recommender {
 
   final TrackSource source;
   final TasteProfile profile;
+
+  /// 注册时选的听歌偏好。用户修改后直接替换。
+  UserPreferences preferences;
+
+  /// 热歌榜。用户开了「网红热歌」才会用到。
+  final TrendingSource? trending;
   final double exploreRatio;
+
+  /// 开了「网红热歌」时，每批有多大概率出自热歌。
+  final double viralRatio;
 
   /// 一批里同一歌手最多出现几首，避免连刷同一个人。
   final int maxPerArtist;
@@ -66,6 +81,10 @@ class Recommender {
     int size = 8,
     int maxAttempts = 3,
   }) async {
+    if (preferences.viral && _random.nextDouble() < viralRatio) {
+      final hot = await _viralBatch(size);
+      if (hot.isNotEmpty) return hot;
+    }
     TrackSourceException? lastError;
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
       // 第一次失败后强制走探索，换一个完全不同的词。
@@ -92,6 +111,33 @@ class Recommender {
     if (fallback.isNotEmpty) return fallback;
     if (lastError != null) throw lastError;
     return const [];
+  }
+
+  /// 网红热歌：优先用热歌榜，榜单拉不到就搜网红歌手。出错时返回空列表。
+  Future<List<Recommendation>> _viralBatch(int size) async {
+    try {
+      final chart = await trending?.trending() ?? const <Track>[];
+      var batch = _rank(chart, size);
+      var reason = '网络热歌榜';
+      var found = chart;
+      if (batch.isEmpty) {
+        final names = viralFallbackArtists
+            .where((a) => !profile.blockedArtists.contains(a))
+            .toList();
+        if (names.isEmpty) return const [];
+        final name = names[_random.nextInt(names.length)];
+        found = await source.search(name, limit: 30);
+        batch = _rank(found, size);
+        reason = '网红热歌：$name';
+      }
+      for (final t in batch) {
+        _seen.add(t.id);
+      }
+      _stash(found, reason);
+      return [for (final t in batch) Recommendation(t, reason)];
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// 把这次没用上的歌存进备用池。
@@ -146,34 +192,45 @@ class Recommender {
   }
 
   ({String term, String reason}) _pickTerm({bool forceExplore = false}) {
-    final explore = forceExplore ||
-        !profile.hasPreference ||
-        _random.nextDouble() < exploreRatio;
+    final blocked = profile.blockedArtists;
+    final preferredArtists =
+        preferences.artists.where((a) => !blocked.contains(a)).toList();
+    final hasTaste = profile.hasPreference || preferredArtists.isNotEmpty;
+    final explore =
+        forceExplore || !hasTaste || _random.nextDouble() < exploreRatio;
     if (!explore) {
-      final artists = profile.topPositive(profile.artists, 5);
-      final genres = profile.topPositive(profile.genres, 3);
       final pool = [
-        for (final e in artists) (term: e.key, w: e.value, kind: 'artist'),
-        for (final e in genres) (term: e.key, w: e.value * 0.6, kind: 'genre'),
+        for (final e in profile.topPositive(profile.artists, 5))
+          (term: e.key, w: e.value, reason: '因为你常听 ${e.key}'),
+        for (final e in profile.topPositive(profile.genres, 3))
+          (term: e.key, w: e.value * 0.6, reason: '你最近爱听 ${e.key}'),
+        for (final e in profile.topPositive(profile.searches, 5))
+          (term: e.key, w: e.value * 0.8, reason: '因为你搜过 ${e.key}'),
+        // 选过的歌手给一个固定权重：冷启动时靠它，听多了以后让位给真实行为。
+        for (final a in preferredArtists)
+          (term: a, w: 1.5, reason: '你选了 $a'),
       ];
       if (pool.isNotEmpty) {
         final total = pool.fold<double>(0, (s, e) => s + e.w);
         var r = _random.nextDouble() * total;
         for (final e in pool) {
           r -= e.w;
-          if (r <= 0) {
-            return (
-              term: e.term,
-              reason: e.kind == 'artist' ? '因为你常听 ${e.term}' : '你最近爱听 ${e.term}',
-            );
-          }
+          if (r <= 0) return (term: e.term, reason: e.reason);
         }
-        final last = pool.last;
-        return (term: last.term, reason: '因为你常听 ${last.term}');
+        return (term: pool.last.term, reason: pool.last.reason);
       }
     }
-    final candidates =
-        seeds.where((s) => !profile.blockedArtists.contains(s)).toList();
+    // 探索：还没学到多少口味时大多按偏好找，学到之后一半时间跳出偏好，防止越推越窄。
+    final preferred = preferenceSeeds(preferences)
+        .where((t) => !blocked.contains(t))
+        .toList();
+    final usePreferred = preferred.isNotEmpty &&
+        _random.nextDouble() < (profile.hasPreference ? 0.5 : 0.85);
+    if (usePreferred) {
+      final term = preferred[_random.nextInt(preferred.length)];
+      return (term: term, reason: '按你的偏好：$term');
+    }
+    final candidates = seeds.where((s) => !blocked.contains(s)).toList();
     final term = candidates[_random.nextInt(candidates.length)];
     return (
       term: term,

@@ -14,6 +14,7 @@ void main() {
   Future<void> pumpFeed(WidgetTester tester) async {
     audio = FakeAudio();
     c = FeedController(
+      user: testUser,
       recommender: Recommender(
         source: SequenceSource([
           [track('1', artist: '歌手甲'), track('2', artist: '歌手乙')],
@@ -28,7 +29,7 @@ void main() {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(MaterialApp(home: FeedPage(controller: c)));
+    await tester.pumpWidget(MaterialApp(home: FeedPage(controller: c, auth: await memoryAuth())));
     // 封面有无限循环的漂移动画，不能 pumpAndSettle。
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
@@ -62,7 +63,7 @@ void main() {
     await tester.tapAt(const Offset(195, 300));
     await tester.pump(const Duration(milliseconds: 100));
     expect(c.isLiked(first), isTrue);
-    expect(find.text('已喜欢'), findsOneWidget);
+    expect(find.text('已赞'), findsOneWidget);
     expect(audio.isPlaying, isTrue, reason: '双击不应触发暂停');
     await tester.pump(const Duration(seconds: 1));
   });
@@ -116,12 +117,13 @@ void main() {
   testWidgets('an empty catalog shows a retry button, not an endless spinner',
       (tester) async {
     c = FeedController(
+      user: testUser,
       recommender: Recommender(
           source: FakeSource({}), profile: TasteProfile(), seeds: ['s']),
       audio: FakeAudio(),
       store: await memoryStore(),
     );
-    await tester.pumpWidget(MaterialApp(home: FeedPage(controller: c)));
+    await tester.pumpWidget(MaterialApp(home: FeedPage(controller: c, auth: await memoryAuth())));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(CircularProgressIndicator), findsNothing);

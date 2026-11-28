@@ -8,7 +8,7 @@ import '../lyrics/lrc.dart';
 import 'artwork.dart';
 import 'heart_burst.dart';
 import 'lyrics_panel.dart';
-import 'notes_sheet.dart';
+import 'comments_sheet.dart';
 
 const _heartRed = Color(0xFFFF2D55);
 
@@ -192,19 +192,20 @@ class _TrackPageState extends State<TrackPage>
         // 5. 右侧操作栏。
         Positioned(
           right: 8,
-          bottom: media.padding.bottom + 150,
+          bottom: media.padding.bottom + 140,
           child: ListenableBuilder(
             listenable: c,
             builder: (context, _) {
               final liked = c.isLiked(t);
-              final notes = c.notesFor(t).length;
+              final saved = c.isFavorite(t);
+              final comments = c.commentCount(t) ?? 0;
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _ActionButton(
                     icon: liked ? Icons.favorite : Icons.favorite_border,
                     color: liked ? _heartRed : Colors.white,
-                    label: liked ? '已喜欢' : '喜欢',
+                    label: liked ? '已赞' : '点赞',
                     onTap: () {
                       HapticFeedback.selectionClick();
                       c.toggleLike(t);
@@ -212,8 +213,24 @@ class _TrackPageState extends State<TrackPage>
                   ),
                   _ActionButton(
                     icon: Icons.chat_bubble_outline_rounded,
-                    label: notes == 0 ? '心得' : '$notes',
-                    onTap: () => showNotesSheet(context, c, t),
+                    label: comments == 0 ? '评论' : '$comments',
+                    onTap: () => showCommentsSheet(context, c, t),
+                  ),
+                  _ActionButton(
+                    icon: saved ? Icons.star_rounded : Icons.star_border_rounded,
+                    color: saved ? const Color(0xFFFFC53D) : Colors.white,
+                    label: saved ? '已收藏' : '收藏',
+                    onTap: () async {
+                      HapticFeedback.selectionClick();
+                      final now = await c.toggleFavorite(t);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(SnackBar(
+                          content: Text(now ? '已收藏，在「我的」里可以找到' : '已取消收藏'),
+                          duration: const Duration(seconds: 2),
+                        ));
+                    },
                   ),
                   _ActionButton(
                     icon: Icons.ios_share_rounded,
@@ -357,7 +374,7 @@ class _ActionButton extends StatelessWidget {
         radius: 32,
         child: SizedBox(
           width: 64,
-          height: 72,
+          height: 64,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -366,7 +383,7 @@ class _ActionButton extends StatelessWidget {
                 transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
                 child: Icon(icon,
                     key: ValueKey(icon),
-                    size: 32,
+                    size: 30,
                     color: color,
                     shadows: const [Shadow(blurRadius: 8, color: Colors.black45)]),
               ),

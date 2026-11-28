@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shuage/feed/feed_controller.dart';
 import 'package:shuage/recommend/recommender.dart';
 import 'package:shuage/recommend/taste_profile.dart';
+import 'package:shuage/social/comment.dart';
 
 import 'fakes.dart';
 
@@ -21,6 +23,7 @@ void main() {
       for (final a in artists) track('t${n++}', artist: a),
     ]);
     c = FeedController(
+      user: testUser,
       recommender: Recommender(
         source: source,
         profile: TasteProfile(),
@@ -125,6 +128,7 @@ void main() {
       [track('b', artist: 'B')],
     ]);
     c = FeedController(
+      user: testUser,
       recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
       audio: audio,
       store: await memoryStore(),
@@ -220,6 +224,7 @@ void main() {
       [track('b', artist: 'B')],
     ]);
     c = FeedController(
+      user: testUser,
       recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
       audio: audio,
       store: await memoryStore(),
@@ -242,15 +247,79 @@ void main() {
     expect(c.index, 1);
   });
 
-  test('notes are stored per track', () async {
-    await build(['A']);
-    await c.init();
-    await settle();
-    final t = c.items.first.track;
-    await c.addNote(t, '  好听  ');
-    await c.addNote(t, '   ');
-    expect(c.notesFor(t), ['好听']);
-    expect(c.store.loadNotes()[t.id], ['好听']);
+  group('comments, favorites and search', () {
+    late SharedPreferences prefs;
+
+    Future<void> buildSocial() async {
+      audio = FakeAudio();
+      final store = await memoryStore();
+      prefs = await SharedPreferences.getInstance();
+      c = FeedController(
+        user: testUser,
+        recommender: Recommender(
+          source: FakeSource({}, fallback: [track('t1', artist: 'A'), track('t2', artist: 'B')]),
+          profile: TasteProfile(),
+          seeds: ['s'],
+        ),
+        audio: audio,
+        store: store,
+        comments: LocalCommentStore(prefs),
+        prefetchThreshold: 0,
+      );
+      await c.init();
+      await settle();
+    }
+
+    test('comments are signed by the member and counted', () async {
+      await buildSocial();
+      final t = c.items.first.track;
+      expect(c.commentCount(t), 0, reason: '切到这首时已经加载过评论');
+      final posted = await c.addComment(t, '  好听  ');
+      expect(posted.text, '好听');
+      expect(posted.username, testUser.username);
+      expect(c.commentCount(t), 1);
+      await c.deleteComment(posted);
+      expect(c.commentCount(t), 0);
+    });
+
+    test('favorite is separate from like and a stronger signal', () async {
+      await buildSocial();
+      final t = c.items.first.track;
+      expect(await c.toggleFavorite(t), isTrue);
+      expect(c.isFavorite(t), isTrue);
+      expect(c.isLiked(t), isFalse);
+      expect(c.store.loadFavorites(), [t]);
+      expect(c.profile.artists[t.artist], signalWeights[Signal.favorite]);
+      expect(await c.toggleFavorite(t), isFalse);
+      expect(c.store.loadFavorites(), isEmpty);
+      expect(c.profile.artists[t.artist], isNull);
+    });
+
+    test('search is remembered and steers the profile', () async {
+      await buildSocial();
+      await c.recordSearch('  陈奕迅 ');
+      await c.recordSearch('周杰伦');
+      await c.recordSearch('陈奕迅');
+      expect(c.searchHistory, ['陈奕迅', '周杰伦']);
+      expect(c.profile.searches.keys, containsAll(['陈奕迅', '周杰伦']));
+      expect(c.profile.searches['陈奕迅']! > c.profile.searches['周杰伦']!, isTrue);
+      await c.clearSearchHistory();
+      expect(c.searchHistory, isEmpty);
+    });
+
+    test('playNow from search plays immediately, then the feed continues', () async {
+      await buildSocial();
+      final picked = track('found', artist: 'Z');
+      await c.playNow(picked, reason: '来自你的搜索');
+      expect(c.current!.track, picked);
+      expect(c.current!.reason, '来自你的搜索');
+      expect(audio.played.last, 'found');
+      expect(audio.queueIds, [for (final i in c.items) i.track.id]);
+      // 已在播的歌再点一次不会重复插入。
+      final before = c.items.length;
+      await c.playNow(picked, reason: '来自你的搜索');
+      expect(c.items.length, before);
+    });
   });
 
   test('insertNext puts a liked song right after the current one', () async {
@@ -259,7 +328,7 @@ void main() {
     await settle();
     final at = c.insertNext(track('liked', artist: 'Z'));
     expect(at, 1);
-    expect(c.items[1].reason, '来自我喜欢');
+    expect(c.items[1].reason, '来自我的收藏');
     expect(audio.queueIds, [for (final i in c.items) i.track.id]);
     // 原生层播完当前这首，接的就是插进来的这首。
     audio.finish();
@@ -271,6 +340,7 @@ void main() {
     audio = FakeAudio();
     final source = SequenceSource([[track('ok')]])..gate = Completer<void>();
     c = FeedController(
+      user: testUser,
       recommender: Recommender(source: FailingSource(), profile: TasteProfile(), seeds: ['s']),
       audio: FakeAudio(),
       store: await memoryStore(),
@@ -280,6 +350,7 @@ void main() {
     expect(c.items, isEmpty);
 
     final recovered = FeedController(
+      user: testUser,
       recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
       audio: audio,
       store: await memoryStore(),
@@ -296,6 +367,7 @@ void main() {
   test('retry on the same controller recovers and starts playing', () async {
     audio = FakeAudio();
     c = FeedController(
+      user: testUser,
       recommender: Recommender(
         source: FlakySource(3, [track('ok')]),
         profile: TasteProfile(),
@@ -322,6 +394,7 @@ void main() {
       session = FakeSession();
       var n = 0;
       c = FeedController(
+        user: testUser,
         recommender: Recommender(
           source: FakeSource({}, fallback: [
             for (final a in artists) track('t${n++}', artist: a),
@@ -406,6 +479,7 @@ void main() {
       [track('c', artist: 'C')],
     ]);
     c = FeedController(
+      user: testUser,
       recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
       audio: audio,
       store: await memoryStore(),
@@ -433,6 +507,7 @@ void main() {
       [track('c', artist: 'C'), track('d', artist: 'D')],
     ]);
     c = FeedController(
+      user: testUser,
       recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
       audio: audio,
       store: await memoryStore(),
@@ -453,6 +528,7 @@ void main() {
 
   test('an empty catalog shows a message instead of spinning forever', () async {
     c = FeedController(
+      user: testUser,
       recommender: Recommender(
           source: FakeSource({}), profile: TasteProfile(), seeds: ['s']),
       audio: FakeAudio(),
@@ -467,6 +543,7 @@ void main() {
   test('unexpected errors also surface instead of spinning forever', () async {
     final source = FakeSource({})..throwOnce = StateError('boom');
     c = FeedController(
+      user: testUser,
       recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
       audio: FakeAudio(),
       store: await memoryStore(),

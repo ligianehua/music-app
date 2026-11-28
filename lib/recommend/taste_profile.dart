@@ -23,6 +23,12 @@ enum Signal {
   /// 取消红心，抵消一次 [like]。
   unlike,
 
+  /// 收藏：比点赞更强的喜欢。
+  favorite,
+
+  /// 取消收藏，抵消一次 [favorite]。
+  unfavorite,
+
   /// 点了「不感兴趣」：同歌手之后不再推荐。
   dislike,
 }
@@ -36,6 +42,8 @@ const Map<Signal, double> signalWeights = {
   Signal.replay: 1.5,
   Signal.like: 2.0,
   Signal.unlike: -2.0,
+  Signal.favorite: 2.5,
+  Signal.unfavorite: -2.5,
   Signal.dislike: -3.0,
 };
 
@@ -54,16 +62,37 @@ class TasteProfile {
   TasteProfile({
     Map<String, double>? artists,
     Map<String, double>? genres,
+    Map<String, double>? searches,
     Set<String>? blockedArtists,
   })  : artists = artists ?? {},
         genres = genres ?? {},
+        searches = searches ?? {},
         blockedArtists = blockedArtists ?? {};
 
   static const double maxScore = 10;
 
+  /// 搜索词最多记多少个，超出时去掉分最低的。
+  static const maxSearches = 20;
+
   final Map<String, double> artists;
   final Map<String, double> genres;
+
+  /// 搜索过的词。越近的搜索分越高，旧的逐次衰减。
+  final Map<String, double> searches;
   final Set<String> blockedArtists;
+
+  /// 记一次搜索：这个词加分，其他词衰减，让推荐跟着最近的兴趣走。
+  void recordSearch(String term) {
+    final t = term.trim();
+    if (t.isEmpty) return;
+    searches.updateAll((_, v) => v * 0.8);
+    searches.removeWhere((_, v) => v < 0.3);
+    searches[t] = ((searches[t] ?? 0) + 3).clamp(0, maxScore).toDouble();
+    if (searches.length > maxSearches) {
+      final weakest = searches.entries.reduce((a, b) => a.value <= b.value ? a : b);
+      searches.remove(weakest.key);
+    }
+  }
 
   void record(Track track, Signal signal) {
     final w = signalWeights[signal]!;
@@ -97,11 +126,14 @@ class TasteProfile {
   }
 
   bool get hasPreference =>
-      artists.values.any((v) => v > 0) || genres.values.any((v) => v > 0);
+      artists.values.any((v) => v > 0) ||
+      genres.values.any((v) => v > 0) ||
+      searches.isNotEmpty;
 
   Map<String, dynamic> toJson() => {
         'artists': artists,
         'genres': genres,
+        'searches': searches,
         'blocked': blockedArtists.toList(),
       };
 
@@ -112,6 +144,7 @@ class TasteProfile {
     return TasteProfile(
       artists: toMap(json['artists']),
       genres: toMap(json['genres']),
+      searches: toMap(json['searches']),
       blockedArtists: {
         ...((json['blocked'] as List?) ?? const []).map((e) => '$e'),
       },

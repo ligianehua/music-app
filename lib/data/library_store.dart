@@ -5,21 +5,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/track.dart';
 import '../recommend/taste_profile.dart';
 
-/// 本机存储：红心歌单、口味画像、本地评论。纯前端 Demo 不上传任何数据。
+/// 一个账号在本机的个人数据：点赞、收藏、口味画像、搜索历史。
+///
+/// 所有键都带上用户 id 前缀，同一台手机上的不同账号互不影响。
 class LibraryStore {
-  LibraryStore(this._prefs);
+  LibraryStore(this._prefs, {required this.userId});
 
-  static Future<LibraryStore> open() async =>
-      LibraryStore(await SharedPreferences.getInstance());
+  static Future<LibraryStore> open(String userId) async =>
+      LibraryStore(await SharedPreferences.getInstance(), userId: userId);
 
   final SharedPreferences _prefs;
+  final String userId;
 
-  static const _likedKey = 'liked_tracks';
-  static const _profileKey = 'taste_profile';
-  static const _notesKey = 'track_notes';
+  String _k(String name) => 'u:$userId:$name';
 
-  List<Track> loadLiked() {
-    final raw = _prefs.getString(_likedKey);
+  /// 搜索历史最多保留多少条。
+  static const maxHistory = 20;
+
+  List<Track> _loadTracks(String name) {
+    final raw = _prefs.getString(_k(name));
     if (raw == null) return [];
     try {
       return (jsonDecode(raw) as List)
@@ -31,11 +35,20 @@ class LibraryStore {
     }
   }
 
-  Future<void> saveLiked(List<Track> tracks) => _prefs.setString(
-      _likedKey, jsonEncode(tracks.map((t) => t.toJson()).toList()));
+  Future<void> _saveTracks(String name, List<Track> tracks) => _prefs.setString(
+      _k(name), jsonEncode(tracks.map((t) => t.toJson()).toList()));
+
+  /// 点赞过的歌，新的在前。
+  List<Track> loadLiked() => _loadTracks('liked');
+  Future<void> saveLiked(List<Track> tracks) => _saveTracks('liked', tracks);
+
+  /// 收藏的歌，新的在前。
+  List<Track> loadFavorites() => _loadTracks('favorites');
+  Future<void> saveFavorites(List<Track> tracks) =>
+      _saveTracks('favorites', tracks);
 
   TasteProfile loadProfile() {
-    final raw = _prefs.getString(_profileKey);
+    final raw = _prefs.getString(_k('profile'));
     if (raw == null) return TasteProfile();
     try {
       return TasteProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
@@ -45,22 +58,27 @@ class LibraryStore {
   }
 
   Future<void> saveProfile(TasteProfile p) =>
-      _prefs.setString(_profileKey, jsonEncode(p.toJson()));
-
-  Map<String, List<String>> loadNotes() {
-    final raw = _prefs.getString(_notesKey);
-    if (raw == null) return {};
-    try {
-      return (jsonDecode(raw) as Map<String, dynamic>)
-          .map((k, v) => MapEntry(k, (v as List).cast<String>()));
-    } catch (_) {
-      return {};
-    }
-  }
-
-  Future<void> saveNotes(Map<String, List<String>> notes) =>
-      _prefs.setString(_notesKey, jsonEncode(notes));
+      _prefs.setString(_k('profile'), jsonEncode(p.toJson()));
 
   /// 清空口味画像，重新冷启动。
-  Future<void> resetProfile() => _prefs.remove(_profileKey);
+  Future<void> resetProfile() => _prefs.remove(_k('profile'));
+
+  /// 搜索历史，新的在前。
+  List<String> loadSearchHistory() =>
+      _prefs.getStringList(_k('search_history')) ?? [];
+
+  /// 记一条搜索：去重后放到最前面。
+  Future<List<String>> addSearch(String term) async {
+    final t = term.trim();
+    final list = loadSearchHistory();
+    if (t.isEmpty) return list;
+    list
+      ..remove(t)
+      ..insert(0, t);
+    if (list.length > maxHistory) list.removeRange(maxHistory, list.length);
+    await _prefs.setStringList(_k('search_history'), list);
+    return list;
+  }
+
+  Future<void> clearSearchHistory() => _prefs.remove(_k('search_history'));
 }

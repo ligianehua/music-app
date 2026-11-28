@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../account/user.dart';
 import '../audio/audio_engine.dart';
 import '../audio/now_playing.dart';
 import '../data/library_store.dart';
@@ -11,6 +12,7 @@ import '../lyrics/lrc.dart';
 import '../models/track.dart';
 import '../recommend/recommender.dart';
 import '../recommend/taste_profile.dart';
+import '../social/comment.dart';
 
 /// 流里的一张卡片。
 class FeedItem {
@@ -34,9 +36,11 @@ class FeedItem {
 /// 导航以控制器为准，界面只跟随 [index]，所以锁屏时界面不绘制也能连播。
 class FeedController extends ChangeNotifier implements RemoteCommands {
   FeedController({
+    required this.user,
     required this.recommender,
     required this.audio,
     required this.store,
+    this.comments,
     this.lyricsSource,
     this.session,
     this.prefetchThreshold = 3,
@@ -58,9 +62,16 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     session?.attach(this);
   }
 
+  /// 当前登录的会员。评论署名、个人数据都属于他。
+  final AppUser user;
   final Recommender recommender;
   final AudioEngine audio;
+
+  /// 这个会员的个人数据：点赞、收藏、口味画像、搜索历史。
   final LibraryStore store;
+
+  /// 评论仓库。为 null 时评论功能不可用。
+  final CommentStore? comments;
   final LyricsSource? lyricsSource;
 
   /// 锁屏和通知栏。为 null 时不对接系统媒体会话。
@@ -85,7 +96,9 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
   final List<StreamSubscription<dynamic>> _subs = [];
   final Set<String> _played = {};
   List<Track> _liked = [];
-  Map<String, List<String>> _notes = {};
+  List<Track> _favorites = [];
+  List<String> _searchHistory = [];
+  final Map<String, List<Comment>> _commentCache = {};
   Duration _maxListened = Duration.zero;
 
   /// 当前这首已经记过「听完」或「不感兴趣」，离开时不再重复计分。
@@ -98,15 +111,26 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
   FeedItem? get current =>
       index >= 0 && index < items.length ? items[index] : null;
 
+  /// 点赞过的歌，新的在前。
   List<Track> get liked => List.unmodifiable(_liked);
+
+  /// 收藏的歌，新的在前。
+  List<Track> get favorites => List.unmodifiable(_favorites);
+
+  /// 搜索历史，新的在前。
+  List<String> get searchHistory => List.unmodifiable(_searchHistory);
 
   bool isLiked(Track t) => _liked.contains(t);
 
-  List<String> notesFor(Track t) => List.unmodifiable(_notes[t.id] ?? const []);
+  bool isFavorite(Track t) => _favorites.contains(t);
+
+  /// 已加载过的评论条数；还没加载时为 null。
+  int? commentCount(Track t) => _commentCache[t.id]?.length;
 
   Future<void> init() async {
     _liked = store.loadLiked();
-    _notes = store.loadNotes();
+    _favorites = store.loadFavorites();
+    _searchHistory = store.loadSearchHistory();
     _pendingIndex = 0;
     await _loadMore();
   }
@@ -186,6 +210,7 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     duration.value = null;
     _notify();
     _publish();
+    unawaited(_guard(loadComments(item.track).then((_) {})));
 
     if (items.length - i <= prefetchThreshold) unawaited(_loadMore());
     if (fromEngine) return;
@@ -310,22 +335,84 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
     if (at == index) unawaited(goTo(at + 1));
   }
 
-  Future<void> addNote(Track t, String text) async {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
-    (_notes[t.id] ??= []).add(trimmed);
+  /// 切换收藏。返回切换后是否为收藏状态。
+  Future<bool> toggleFavorite(Track t) async {
+    final now = !isFavorite(t);
+    if (now) {
+      _favorites.insert(0, t);
+      _record(t, Signal.favorite);
+    } else {
+      _favorites.remove(t);
+      _record(t, Signal.unfavorite);
+    }
     _notify();
-    await store.saveNotes(_notes);
+    await store.saveFavorites(_favorites);
+    return now;
   }
 
-  /// 从「我喜欢」里点一首：插到当前位置后面，返回插入的位置。
-  int insertNext(Track t) {
+  /// 读取某首歌的评论，新的在前。
+  Future<List<Comment>> loadComments(Track t) async {
+    final store = comments;
+    if (store == null) return const [];
+    final list = await store.list(t.id);
+    _commentCache[t.id] = list;
+    _notify();
+    return list;
+  }
+
+  /// 以当前会员身份发评论。
+  Future<Comment> addComment(Track t, String text) async {
+    final store = comments;
+    if (store == null) throw StateError('评论功能不可用');
+    final c = await store.add(t.id, user, text);
+    _commentCache[t.id] = [c, ...?_commentCache[t.id]];
+    _notify();
+    return c;
+  }
+
+  /// 删除自己的评论。
+  Future<void> deleteComment(Comment c) async {
+    await comments?.delete(c, user);
+    _commentCache[c.trackId]?.removeWhere((x) => x.id == c.id);
+    _notify();
+  }
+
+  /// 提交一次搜索：记进搜索历史，并让推荐往这个方向偏。
+  Future<void> recordSearch(String term) async {
+    final t = term.trim();
+    if (t.isEmpty) return;
+    profile.recordSearch(t);
+    _searchHistory = await store.addSearch(t);
+    unawaited(store.saveProfile(profile));
+    _notify();
+  }
+
+  Future<void> clearSearchHistory() async {
+    _searchHistory = [];
+    await store.clearSearchHistory();
+    _notify();
+  }
+
+  /// 把一首歌插到当前位置后面，返回插入的位置。
+  int insertNext(Track t, {String reason = '来自我的收藏'}) {
     recommender.markSeen(t);
     final at = (index + 1).clamp(0, items.length);
-    items.insert(at, FeedItem(t, '来自我喜欢'));
+    items.insert(at, FeedItem(t, reason));
     unawaited(_guard(audio.insert(at, t)));
     _notify();
     return at;
+  }
+
+  /// 立刻播放某首歌（来自搜索、收藏、点赞列表），播完接着刷推荐。
+  Future<void> playNow(Track t, {required String reason}) async {
+    if (current?.track == t) return;
+    await goTo(insertNext(t, reason: reason));
+  }
+
+  /// 用户改了听歌偏好：之后的推荐按新偏好来。
+  void updatePreferences(UserPreferences p) {
+    recommender.preferences = p;
+    _notify();
   }
 
   Future<Lyrics?> lyricsFor(Track t) =>

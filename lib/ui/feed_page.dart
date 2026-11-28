@@ -1,16 +1,24 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../account/auth_service.dart';
 import '../feed/feed_controller.dart';
 import '../models/track.dart';
-import 'liked_page.dart';
+import 'me_page.dart';
+import 'search_page.dart';
 import 'taste_sheet.dart';
 import 'track_page.dart';
 
 /// 刷歌主页：全屏竖向翻页，一首歌一屏。
 class FeedPage extends StatefulWidget {
-  const FeedPage({super.key, required this.controller, this.autoInit = true});
+  const FeedPage({
+    super.key,
+    required this.controller,
+    required this.auth,
+    this.autoInit = true,
+  });
 
   final FeedController controller;
+  final AuthService auth;
 
   /// 测试里可以关掉，手动调用 init。
   final bool autoInit;
@@ -57,11 +65,18 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
-  Future<void> _openLiked() async {
-    final picked = await Navigator.of(context).push<Track>(
-      MaterialPageRoute(builder: (_) => LikedPage(controller: c)),
+  Future<void> _openMe() async {
+    final picked = await Navigator.of(context).push<PickedTrack>(
+      MaterialPageRoute(builder: (_) => MePage(controller: c, auth: widget.auth)),
     );
-    if (picked != null) await c.goTo(c.insertNext(picked));
+    if (picked != null) await c.playNow(picked.track, reason: picked.reason);
+  }
+
+  Future<void> _openSearch() async {
+    final picked = await Navigator.of(context).push<Track>(
+      MaterialPageRoute(builder: (_) => SearchPage(controller: c)),
+    );
+    if (picked != null) await c.playNow(picked, reason: '来自你的搜索');
   }
 
   @override
@@ -119,9 +134,9 @@ class _FeedPageState extends State<FeedPage> {
                 left: 0,
                 right: 0,
                 child: _TopBar(
-                  onLiked: _openLiked,
+                  onSearch: _openSearch,
+                  onMe: _openMe,
                   onTaste: () => showTasteSheet(context, c),
-                  likedCount: c.liked.length,
                 ),
               ),
             ],
@@ -134,14 +149,14 @@ class _FeedPageState extends State<FeedPage> {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
-    required this.onLiked,
+    required this.onSearch,
+    required this.onMe,
     required this.onTaste,
-    required this.likedCount,
   });
 
-  final VoidCallback onLiked;
+  final VoidCallback onSearch;
+  final VoidCallback onMe;
   final VoidCallback onTaste;
-  final int likedCount;
 
   @override
   Widget build(BuildContext context) {
@@ -161,25 +176,22 @@ class _TopBar extends StatelessWidget {
                 shadows: [Shadow(blurRadius: 8, color: Colors.black54)],
               ),
             ),
-            const SizedBox(width: 8),
-            const Text('上滑换一首',
-                style: TextStyle(color: Colors.white54, fontSize: 12)),
             const Spacer(),
+            IconButton(
+              tooltip: '搜索',
+              onPressed: onSearch,
+              icon: const Icon(Icons.search_rounded, color: Colors.white),
+            ),
             IconButton(
               tooltip: '我的口味',
               onPressed: onTaste,
               icon: const Icon(Icons.tune_rounded, color: Colors.white),
             ),
             IconButton(
-              tooltip: '我喜欢',
-              onPressed: onLiked,
-              icon: Badge(
-                isLabelVisible: likedCount > 0,
-                label: Text('$likedCount'),
-                backgroundColor: const Color(0xFFFF2D55),
-                child: const Icon(Icons.favorite_border_rounded,
-                    color: Colors.white),
-              ),
+              tooltip: '我的',
+              onPressed: onMe,
+              icon: const Icon(Icons.person_outline_rounded,
+                  color: Colors.white),
             ),
           ],
         ),
