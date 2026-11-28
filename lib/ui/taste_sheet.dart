@@ -39,40 +39,41 @@ Future<void> showTasteSheet(BuildContext context, FeedController c) {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('我的口味画像',
+                const Text('Your taste profile',
                     style: TextStyle(
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                const Text('听完、点赞、收藏、回听、搜索会加分；秒划、不感兴趣会减分。另有 20% 推荐用来探索新口味。',
+                const Text(
+                    'Finishing, liking, saving, replaying and searching raise a score. Quick skips and "Not for me" lower it. 20% of songs explore something new.',
                     style: TextStyle(color: Colors.white54, fontSize: 12)),
                 const SizedBox(height: 16),
                 if (!p.hasPreference)
-                  const Text('还在认识你，多刷几首就有了',
+                  const Text('Still getting to know you. Keep swiping!',
                       style: TextStyle(color: Colors.white70))
                 else ...[
                   if (artists.isNotEmpty) ...[
-                    const Text('常听歌手', style: title),
+                    const Text('Top artists', style: title),
                     const SizedBox(height: 8),
                     chips(artists),
                     const SizedBox(height: 16),
                   ],
                   if (genres.isNotEmpty) ...[
-                    const Text('偏好风格', style: title),
+                    const Text('Top genres', style: title),
                     const SizedBox(height: 8),
                     chips(genres),
                     const SizedBox(height: 16),
                   ],
                   if (searches.isNotEmpty) ...[
-                    const Text('最近搜过', style: title),
+                    const Text('Recent searches', style: title),
                     const SizedBox(height: 8),
                     chips(searches),
                     const SizedBox(height: 16),
                   ],
                 ],
                 if (p.blockedArtists.isNotEmpty) ...[
-                  Text('已屏蔽：${p.blockedArtists.join('、')}',
+                  Text('Hidden artists: ${p.blockedArtists.join(', ')}',
                       style: const TextStyle(color: Colors.white54)),
                   const SizedBox(height: 16),
                 ],
@@ -84,7 +85,7 @@ Future<void> showTasteSheet(BuildContext context, FeedController c) {
                       if (context.mounted) Navigator.of(context).pop();
                     },
                     icon: const Icon(Icons.restart_alt_rounded),
-                    label: const Text('重置口味'),
+                    label: const Text('Reset taste'),
                   ),
                 ),
               ],

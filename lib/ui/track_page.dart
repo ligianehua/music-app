@@ -3,6 +3,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../app_info.dart';
 import '../feed/feed_controller.dart';
 import '../lyrics/lrc.dart';
 import 'artwork.dart';
@@ -68,13 +69,13 @@ class _TrackPageState extends State<TrackPage>
 
   void _share() {
     final t = widget.item.track;
-    final text = '我在刷歌刷到了《${t.title}》- ${t.artist}'
+    final text = 'I found "${t.title}" by ${t.artist} on $appName'
         '${t.storeUrl == null ? '' : '\n${t.storeUrl}'}';
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(
-        content: Text('分享文案已复制，去粘贴给朋友吧'),
+        content: Text('Link copied. Paste it anywhere to share.'),
         duration: Duration(seconds: 2),
       ));
   }
@@ -133,18 +134,19 @@ class _TrackPageState extends State<TrackPage>
                   ),
                 ),
                 const SizedBox(height: 20),
+                // 两侧各留 72：英文歌词较长，避免贴到右侧按钮栏。
                 SizedBox(
                   height: 120,
-                  width: media.size.width - 96,
+                  width: media.size.width - 144,
                   child: FutureBuilder<Lyrics?>(
                     future: _lyrics,
                     builder: (context, snap) {
                       final lyrics = snap.data;
                       if (snap.connectionState != ConnectionState.done) {
-                        return const _LyricsHint('歌词加载中…');
+                        return const _LyricsHint('Loading lyrics…');
                       }
                       if (lyrics == null) {
-                        return const _LyricsHint('纯享版 · 暂无歌词');
+                        return const _LyricsHint('No lyrics available');
                       }
                       return ValueListenableBuilder<Duration?>(
                         valueListenable: c.duration,
@@ -185,7 +187,10 @@ class _TrackPageState extends State<TrackPage>
         if (widget.item.failed)
           const IgnorePointer(
             child: Center(
-              child: _Pill('这首暂时放不了，上滑下一首 ↑'),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 40),
+                child: _Pill("Can't play this song. Swipe up for the next one."),
+              ),
             ),
           ),
 
@@ -205,7 +210,7 @@ class _TrackPageState extends State<TrackPage>
                   _ActionButton(
                     icon: liked ? Icons.favorite : Icons.favorite_border,
                     color: liked ? _heartRed : Colors.white,
-                    label: liked ? '已赞' : '点赞',
+                    label: liked ? 'Liked' : 'Like',
                     onTap: () {
                       HapticFeedback.selectionClick();
                       c.toggleLike(t);
@@ -213,13 +218,13 @@ class _TrackPageState extends State<TrackPage>
                   ),
                   _ActionButton(
                     icon: Icons.chat_bubble_outline_rounded,
-                    label: comments == 0 ? '评论' : '$comments',
+                    label: comments == 0 ? 'Comment' : '$comments',
                     onTap: () => showCommentsSheet(context, c, t),
                   ),
                   _ActionButton(
                     icon: saved ? Icons.star_rounded : Icons.star_border_rounded,
                     color: saved ? const Color(0xFFFFC53D) : Colors.white,
-                    label: saved ? '已收藏' : '收藏',
+                    label: saved ? 'Saved' : 'Save',
                     onTap: () async {
                       HapticFeedback.selectionClick();
                       final now = await c.toggleFavorite(t);
@@ -227,25 +232,27 @@ class _TrackPageState extends State<TrackPage>
                       ScaffoldMessenger.of(context)
                         ..hideCurrentSnackBar()
                         ..showSnackBar(SnackBar(
-                          content: Text(now ? '已收藏，在「我的」里可以找到' : '已取消收藏'),
+                          content: Text(now
+                              ? 'Saved. Find it in your profile.'
+                              : 'Removed from saved songs.'),
                           duration: const Duration(seconds: 2),
                         ));
                     },
                   ),
                   _ActionButton(
                     icon: Icons.ios_share_rounded,
-                    label: '分享',
+                    label: 'Share',
                     onTap: _share,
                   ),
                   _ActionButton(
                     icon: Icons.not_interested_rounded,
-                    label: '不感兴趣',
+                    label: 'Not for me',
                     onTap: () {
                       c.dislike(widget.item);
                       ScaffoldMessenger.of(context)
                         ..hideCurrentSnackBar()
                         ..showSnackBar(SnackBar(
-                          content: Text('好的，少推 ${t.artist}'),
+                          content: Text("Got it. You'll see less of ${t.artist}."),
                           duration: const Duration(seconds: 2),
                         ));
                     },
@@ -265,7 +272,10 @@ class _TrackPageState extends State<TrackPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _Pill(widget.item.reason, small: true),
+              Padding(
+                padding: const EdgeInsets.only(right: 64),
+                child: _Pill(widget.item.reason, small: true),
+              ),
               const SizedBox(height: 10),
               Padding(
                 padding: const EdgeInsets.only(right: 64),
@@ -388,8 +398,13 @@ class _ActionButton extends StatelessWidget {
                     shadows: const [Shadow(blurRadius: 8, color: Colors.black45)]),
               ),
               const SizedBox(height: 4),
-              Text(label,
-                  style: const TextStyle(fontSize: 11, color: Colors.white)),
+              // 英文标签长短不一：放不下时整体缩小，不换行也不溢出。
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(label,
+                    maxLines: 1,
+                    style: const TextStyle(fontSize: 11, color: Colors.white)),
+              ),
             ],
           ),
         ),
@@ -414,6 +429,9 @@ class _Pill extends StatelessWidget {
       ),
       child: Text(
         text,
+        maxLines: small ? 1 : 3,
+        overflow: TextOverflow.ellipsis,
+        textAlign: small ? TextAlign.start : TextAlign.center,
         style: TextStyle(fontSize: small ? 12 : 15, color: Colors.white),
       ),
     );

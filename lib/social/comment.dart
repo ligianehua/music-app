@@ -95,9 +95,9 @@ class LocalCommentStore implements CommentStore {
   @override
   Future<Comment> add(String trackId, AppUser author, String text) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) throw ArgumentError('评论不能为空');
+    if (trimmed.isEmpty) throw ArgumentError("Comment can't be empty.");
     if (trimmed.length > maxCommentLength) {
-      throw ArgumentError('评论最多 $maxCommentLength 字');
+      throw ArgumentError('Comments can be up to $maxCommentLength characters.');
     }
     final rng = Random.secure();
     final comment = Comment(
@@ -116,7 +116,7 @@ class LocalCommentStore implements CommentStore {
 
   @override
   Future<void> delete(Comment comment, AppUser by) async {
-    if (comment.userId != by.id) throw StateError('只能删除自己的评论');
+    if (comment.userId != by.id) throw StateError('You can only delete your own comments.');
     final all = _load();
     all[comment.trackId]?.removeWhere((c) => c.id == comment.id);
     await _save(all);

@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account/auth_service.dart';
+import 'app_info.dart';
 import 'account/user.dart';
 import 'audio/audio_engine.dart';
 import 'audio/now_playing.dart';
@@ -50,7 +51,7 @@ class ShuageApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '刷歌',
+      title: appName,
       debugShowCheckedModeBanner: false,
       // 网页版在电脑上也能用鼠标、触控板拖着刷。
       scrollBehavior: const MaterialScrollBehavior().copyWith(

@@ -68,7 +68,7 @@ jobs:
           gh release create "$TAG" build/app/outputs/flutter-apk/app-release.apk \
             --target "${{ github.sha }}" \
             --prerelease \
-            --title "刷歌试用版 #${{ github.run_number }}" \
+            --title "SongSwipe 试用版 #${{ github.run_number }}" \
             --notes "分支 ${{ github.ref_name }} 的自动构建（提交 ${SHORT_SHA}）。
 
           手机浏览器下载下面的 app-release.apk，打开安装。首次安装会提示允许「安装未知来源应用」。

@@ -39,8 +39,8 @@ void main() {
     await pumpFeed(tester);
     final first = c.items.first.track;
     expect(find.text(first.title), findsOneWidget);
-    expect(find.text('刷歌'), findsOneWidget);
-    expect(find.text('热门推荐：s'), findsOneWidget);
+    expect(find.text('SongSwipe'), findsOneWidget);
+    expect(find.text('Popular: s'), findsOneWidget);
     expect(audio.played, [first.id]);
   });
 
@@ -63,7 +63,7 @@ void main() {
     await tester.tapAt(const Offset(195, 300));
     await tester.pump(const Duration(milliseconds: 100));
     expect(c.isLiked(first), isTrue);
-    expect(find.text('已赞'), findsOneWidget);
+    expect(find.text('Liked'), findsOneWidget);
     expect(audio.isPlaying, isTrue, reason: '双击不应触发暂停');
     await tester.pump(const Duration(seconds: 1));
   });
@@ -78,12 +78,12 @@ void main() {
     expect(c.index, 1);
   });
 
-  testWidgets('不感兴趣 removes the song and shows feedback', (tester) async {
+  testWidgets('"Not for me" removes the song and shows feedback', (tester) async {
     await pumpFeed(tester);
     final first = c.items.first.track;
-    await tester.tap(find.text('不感兴趣').first);
+    await tester.tap(find.text('Not for me').first);
     await tester.pump();
-    expect(find.text('好的，少推 ${first.artist}'), findsOneWidget);
+    expect(find.text("Got it. You'll see less of ${first.artist}."), findsOneWidget);
     expect(c.profile.blockedArtists, {first.artist});
     await tester.pump(const Duration(milliseconds: 600));
     expect(c.index, 1);
@@ -127,7 +127,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(find.text('重试'), findsOneWidget);
-    expect(find.textContaining('没找到能播放的歌'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.textContaining('No playable songs'), findsOneWidget);
   });
 }

@@ -1,57 +1,74 @@
 import '../account/user.dart';
 
-/// 偏好设置页上可选的语言。
-const languageOptions = ['华语', '粤语', '欧美', '日语', '韩语'];
+/// 偏好设置页上可选的语言（面向菲律宾和全球用户）。
+const languageOptions = [
+  'English', 'Filipino', 'Korean', 'Japanese', 'Spanish', 'Mandarin',
+];
 
 /// 可选的风格。
 const genreOptions = [
-  '流行', '摇滚', '民谣', '电子', 'R&B', '说唱', '古风', '爵士', '轻音乐', 'City Pop', 'Lo-fi',
+  'Pop', 'Rock', 'Hip-Hop', 'R&B', 'Indie', 'Acoustic', 'Electronic',
+  'Jazz', 'Lo-fi', 'Country', 'Latin',
 ];
 
 /// 按语言分组的歌手候选。没选语言时展示全部。
 const artistOptionsByLanguage = <String, List<String>>{
-  '华语': [
-    '周杰伦', '林俊杰', '陈奕迅', '邓紫棋', '五月天', '孙燕姿', '王菲', '毛不易',
-    '李荣浩', '薛之谦', '告五人', '陶喆', '蔡依林', '方大同', '张惠妹', '汪苏泷',
+  'English': [
+    'Taylor Swift', 'Olivia Rodrigo', 'Sabrina Carpenter', 'The Weeknd',
+    'Billie Eilish', 'Bruno Mars', 'Ed Sheeran', 'Dua Lipa', 'Ariana Grande',
+    'Coldplay',
   ],
-  '粤语': ['张学友', 'Beyond', '杨千嬅', '容祖儿', '张天赋', 'Dear Jane', '谢安琪'],
-  '欧美': [
-    'Taylor Swift', 'The Weeknd', 'Billie Eilish', 'Coldplay', 'Bruno Mars',
-    'Ed Sheeran', 'Olivia Rodrigo', 'Dua Lipa',
+  'Filipino': [
+    'Ben&Ben', 'SB19', 'BINI', 'Moira Dela Torre', 'Zack Tabudlo',
+    'December Avenue', 'Arthur Nery', 'Adie', 'Cup of Joe', 'Juan Karlos',
   ],
-  '日语': ['米津玄師', 'YOASOBI', 'Aimer', 'King Gnu', '宇多田ヒカル', 'Official髭男dism'],
-  '韩语': ['NewJeans', 'IU', 'BLACKPINK', 'BTS', 'aespa', 'SEVENTEEN'],
+  'Korean': ['NewJeans', 'BLACKPINK', 'BTS', 'IU', 'aespa', 'SEVENTEEN', 'Stray Kids'],
+  'Japanese': ['YOASOBI', 'Kenshi Yonezu', 'Aimer', 'King Gnu', 'Official HIGE DANDism'],
+  'Spanish': ['Bad Bunny', 'Shakira', 'Karol G', 'Rosalía', 'Peso Pluma'],
+  'Mandarin': ['Jay Chou', 'JJ Lin', 'G.E.M.', 'Eason Chan', 'Mayday'],
 };
 
-/// 网红热歌榜拉不到时的兜底：短视频平台上常见的网络歌手。
+/// 热歌榜拉不到时的兜底：短视频平台上常见的走红歌手。
 const viralFallbackArtists = [
-  '王贰浪', '阿冗', '海来阿木', '任然', '承桓', '刘大壮', '颜人中', '小阿七', '半吨兄弟',
+  'Sabrina Carpenter', 'Benson Boone', 'Chappell Roan', 'Tate McRae',
+  'Gracie Abrams', 'Alex Warren', 'Cup of Joe', 'Dionela', 'Arthur Nery',
 ];
 
 /// 按已选语言列出歌手候选，去重并保持顺序。
 List<String> artistOptionsFor(Set<String> languages) {
   final groups = languages.isEmpty
       ? artistOptionsByLanguage.values
-      : [for (final l in languageOptions) if (languages.contains(l)) artistOptionsByLanguage[l]!];
+      : [
+          for (final l in languageOptions)
+            if (languages.contains(l)) artistOptionsByLanguage[l]!,
+        ];
   final seen = <String>{};
   return [for (final g in groups) for (final a in g) if (seen.add(a)) a];
 }
 
 /// 每种语言没有选风格时的默认搜索词。
 const _languageDefaultTerm = {
-  '华语': '华语流行',
-  '粤语': '粤语流行',
-  '欧美': 'pop hits',
-  '日语': 'J-Pop',
-  '韩语': 'K-Pop',
+  'English': 'pop hits',
+  'Filipino': 'OPM',
+  'Korean': 'K-Pop',
+  'Japanese': 'J-Pop',
+  'Spanish': 'latin pop',
+  'Mandarin': 'Mandopop',
 };
 
-/// 风格在欧美曲库里的英文说法。
-const _genreEnglish = {
-  '流行': 'pop', '摇滚': 'rock', '民谣': 'folk', '电子': 'electronic',
-  'R&B': 'R&B', '说唱': 'hip hop', '古风': '古风', '爵士': 'jazz',
-  '轻音乐': 'piano', 'City Pop': 'city pop', 'Lo-fi': 'lofi',
-};
+/// 「语言 + 风格」在曲库里的搜索说法。
+String _phrase(String language, String genre) {
+  final g = genre.toLowerCase();
+  return switch (language) {
+    'English' => g,
+    'Filipino' => 'OPM $g',
+    'Korean' => 'K-$g',
+    'Japanese' => 'J-$g',
+    'Spanish' => 'latin $g',
+    'Mandarin' => 'Mandarin $g',
+    _ => g,
+  };
+}
 
 /// 把偏好翻译成推荐器用的搜索词：歌手名、「语言 + 风格」组合、语言默认词。
 List<String> preferenceSeeds(UserPreferences p) {
@@ -59,20 +76,13 @@ List<String> preferenceSeeds(UserPreferences p) {
   final langs = [for (final l in languageOptions) if (p.languages.contains(l)) l];
   final genres = [for (final g in genreOptions) if (p.genres.contains(g)) g];
   if (langs.isEmpty) {
-    terms.addAll(genres);
+    terms.addAll(genres.map((g) => g.toLowerCase()));
   } else {
     for (final l in langs) {
       if (genres.isEmpty) {
         terms.add(_languageDefaultTerm[l]!);
-        continue;
-      }
-      for (final g in genres) {
-        terms.add(switch (l) {
-          '欧美' => _genreEnglish[g]!,
-          '日语' => 'J-${_genreEnglish[g]}',
-          '韩语' => 'K-${_genreEnglish[g]}',
-          _ => '$l$g',
-        });
+      } else {
+        terms.addAll(genres.map((g) => _phrase(l, g)));
       }
     }
   }

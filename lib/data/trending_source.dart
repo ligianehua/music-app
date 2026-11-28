@@ -11,14 +11,14 @@ abstract class TrendingSource {
   Future<List<Track>> trending();
 }
 
-/// Apple Music 港台区「最多播放」榜单。
+/// Apple Music 菲律宾区和美区的「最多播放」榜单。
 ///
-/// 抖音没有公开接口，这里用 Apple 的榜单近似「网络热歌」：先取榜单上的歌曲 id，
+/// TikTok 没有公开的热歌接口，这里用 Apple 的榜单近似「正在流行」：先取榜单上的歌曲 id，
 /// 再用 iTunes 查询接口补上试听地址。结果在一次运行内缓存 30 分钟。
 class AppleChartSource implements TrendingSource {
   AppleChartSource({
     http.Client? client,
-    this.storefronts = const ['hk', 'tw'],
+    this.storefronts = const ['ph', 'us'],
     this.limit = 50,
     DateTime Function()? clock,
   })  : _client = client ?? http.Client(),

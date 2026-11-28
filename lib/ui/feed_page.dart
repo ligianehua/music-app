@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../account/auth_service.dart';
+import '../app_info.dart';
 import '../feed/feed_controller.dart';
 import '../models/track.dart';
 import 'me_page.dart';
@@ -76,7 +77,7 @@ class _FeedPageState extends State<FeedPage> {
     final picked = await Navigator.of(context).push<Track>(
       MaterialPageRoute(builder: (_) => SearchPage(controller: c)),
     );
-    if (picked != null) await c.playNow(picked, reason: '来自你的搜索');
+    if (picked != null) await c.playNow(picked, reason: 'From your search');
   }
 
   @override
@@ -166,38 +167,66 @@ class _TopBar extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
         child: Row(
           children: [
-            const Text(
-              '刷歌',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-                shadows: [Shadow(blurRadius: 8, color: Colors.black54)],
+            // 小屏或字体放大时，名称自动缩小，给右侧按钮留位置。
+            const Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  appName,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    shadows: [Shadow(blurRadius: 8, color: Colors.black54)],
+                  ),
+                ),
               ),
             ),
-            const Spacer(),
-            IconButton(
-              tooltip: '搜索',
+            _TopIcon(
+              tooltip: 'Search',
               onPressed: onSearch,
-              icon: const Icon(Icons.search_rounded, color: Colors.white),
+              icon: Icons.search_rounded,
             ),
-            IconButton(
-              tooltip: '我的口味',
+            _TopIcon(
+              tooltip: 'Your taste',
               onPressed: onTaste,
-              icon: const Icon(Icons.tune_rounded, color: Colors.white),
+              icon: Icons.tune_rounded,
             ),
-            IconButton(
-              tooltip: '我的',
+            _TopIcon(
+              tooltip: 'Profile',
               onPressed: onMe,
-              icon: const Icon(Icons.person_outline_rounded,
-                  color: Colors.white),
+              icon: Icons.person_outline_rounded,
             ),
           ],
         ),
       ),
     );
   }
+}
+
+/// 顶栏图标按钮：点击区域 44x44，比默认的 48 紧凑一点。
+class _TopIcon extends StatelessWidget {
+  const _TopIcon({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+        padding: EdgeInsets.zero,
+        icon: Icon(icon, color: Colors.white,
+            shadows: const [Shadow(blurRadius: 8, color: Colors.black54)]),
+      );
 }
 
 class _StatusView extends StatelessWidget {
@@ -222,7 +251,8 @@ class _StatusView extends StatelessWidget {
                 children: [
                   CircularProgressIndicator(color: Colors.white),
                   SizedBox(height: 16),
-                  Text('正在为你挑歌…', style: TextStyle(color: Colors.white70)),
+                  Text('Finding songs for you…',
+                      style: TextStyle(color: Colors.white70)),
                 ],
               )
             : Column(
@@ -231,10 +261,14 @@ class _StatusView extends StatelessWidget {
                   const Icon(Icons.wifi_off_rounded,
                       color: Colors.white54, size: 48),
                   const SizedBox(height: 12),
-                  Text(error ?? '暂时没有更多歌了',
-                      style: const TextStyle(color: Colors.white70)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(error ?? 'No more songs right now.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white70)),
+                  ),
                   const SizedBox(height: 16),
-                  FilledButton(onPressed: onRetry, child: const Text('重试')),
+                  FilledButton(onPressed: onRetry, child: const Text('Try again')),
                 ],
               ),
       ),

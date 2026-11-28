@@ -9,13 +9,13 @@ const likeActionName = 'like';
 /// iOS 锁屏不支持自定义按钮，红心只出现在安卓。
 final likeControl = MediaControl.custom(
   androidIcon: 'drawable/ic_shuage_like',
-  label: '喜欢',
+  label: 'Like',
   name: likeActionName,
 );
 
 final likedControl = MediaControl.custom(
   androidIcon: 'drawable/ic_shuage_liked',
-  label: '取消喜欢',
+  label: 'Unlike',
   name: likeActionName,
 );
 
@@ -115,8 +115,8 @@ class SystemMediaSession implements NowPlayingSession {
       builder: ShuageAudioHandler.new,
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.shuage.shuage.playback',
-        androidNotificationChannelName: '刷歌播放',
-        androidNotificationChannelDescription: '锁屏和通知栏的播放控制',
+        androidNotificationChannelName: 'Playback',
+        androidNotificationChannelDescription: 'Playback controls on the lock screen and in notifications',
         // 播放时通知不能被划掉；暂停后可以划掉，系统也可回收服务。
         androidNotificationOngoing: true,
         androidStopForegroundOnPause: true,

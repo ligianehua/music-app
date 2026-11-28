@@ -107,10 +107,10 @@ void main() {
 
   test('relativeTime reads naturally', () {
     final now = DateTime(2026, 11, 28, 12);
-    expect(relativeTime(now.subtract(const Duration(seconds: 20)), now), '刚刚');
-    expect(relativeTime(now.subtract(const Duration(minutes: 5)), now), '5 分钟前');
-    expect(relativeTime(now.subtract(const Duration(hours: 3)), now), '3 小时前');
-    expect(relativeTime(now.subtract(const Duration(days: 2)), now), '2 天前');
-    expect(relativeTime(DateTime(2026, 1, 5), now), '2026-01-05');
+    expect(relativeTime(now.subtract(const Duration(seconds: 20)), now), 'just now');
+    expect(relativeTime(now.subtract(const Duration(minutes: 5)), now), '5m ago');
+    expect(relativeTime(now.subtract(const Duration(hours: 3)), now), '3h ago');
+    expect(relativeTime(now.subtract(const Duration(days: 2)), now), '2d ago');
+    expect(relativeTime(DateTime(2026, 1, 5), now), 'Jan 5, 2026');
   });
 }

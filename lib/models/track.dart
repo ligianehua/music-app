@@ -45,8 +45,8 @@ class Track {
         .replaceAll('100x100bb', '600x600bb');
     return Track(
       id: 'itunes:${json['trackId']}',
-      title: (json['trackName'] as String?) ?? '未知歌曲',
-      artist: (json['artistName'] as String?) ?? '未知歌手',
+      title: (json['trackName'] as String?) ?? 'Unknown song',
+      artist: (json['artistName'] as String?) ?? 'Unknown artist',
       album: (json['collectionName'] as String?) ?? '',
       artworkUrl: art,
       previewUrl: (json['previewUrl'] as String?) ?? '',

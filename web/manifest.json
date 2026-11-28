@@ -1,11 +1,11 @@
 {
-    "name": "刷歌",
-    "short_name": "刷歌",
+    "name": "SongSwipe",
+    "short_name": "SongSwipe",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "像刷短视频一样刷歌",
+    "description": "Discover music the way you scroll",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

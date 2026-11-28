@@ -55,8 +55,8 @@ void main() {
     test('password rules', () {
       expect(validatePassword('abc123'), isNull);
       expect(validatePassword('ab12'), contains('6'));
-      expect(validatePassword('abcdefg'), contains('数字'));
-      expect(validatePassword('1234567'), contains('字母'));
+      expect(validatePassword('abcdefg'), contains('numbers'));
+      expect(validatePassword('1234567'), contains('letters'));
     });
   });
 
@@ -94,9 +94,9 @@ void main() {
     test('invalid input is rejected with a readable message', () async {
       final auth = service();
       expect(() => auth.register('a', 'abc123'),
-          throwsA(isA<AuthException>().having((e) => e.message, 'm', contains('用户名'))));
+          throwsA(isA<AuthException>().having((e) => e.message, 'm', contains('letters, numbers'))));
       expect(() => auth.register('小明', '123'),
-          throwsA(isA<AuthException>().having((e) => e.message, 'm', contains('密码'))));
+          throwsA(isA<AuthException>().having((e) => e.message, 'm', contains('6 characters'))));
     });
 
     test('login checks the password and does not reveal which part was wrong',
@@ -107,8 +107,8 @@ void main() {
       expect(auth.currentUser, isNull);
       Future<String> fail(String u, String p) =>
           auth.login(u, p).then((_) => 'ok', onError: (Object e) => '$e');
-      expect(await fail('小明', 'wrong1'), '用户名或密码不对');
-      expect(await fail('没这个人', 'abc123'), '用户名或密码不对');
+      expect(await fail('小明', 'wrong1'), 'Incorrect username or password.');
+      expect(await fail('没这个人', 'abc123'), 'Incorrect username or password.');
       final u = await auth.login('小明', 'abc123');
       expect(auth.currentUser, same(u));
     });
@@ -125,12 +125,12 @@ void main() {
       final auth = service();
       await auth.register('小明', 'abc123');
       final updated = await auth.updatePreferences(
-          const UserPreferences(languages: {'粤语'}, artists: {'陈奕迅'}, viral: true));
+          const UserPreferences(languages: {'Filipino'}, artists: {'Ben&Ben'}, viral: true));
       expect(updated.needsOnboarding, isFalse);
       await auth.logout();
       final again = await service().login('小明', 'abc123');
-      expect(again.preferences.languages, {'粤语'});
-      expect(again.preferences.artists, {'陈奕迅'});
+      expect(again.preferences.languages, {'Filipino'});
+      expect(again.preferences.artists, {'Ben&Ben'});
       expect(again.preferences.viral, isTrue);
     });
 

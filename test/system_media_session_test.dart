@@ -41,7 +41,7 @@ void main() {
         MediaAction.pause,
         MediaAction.skipToNext,
       ]);
-      expect(s.controls.first.label, '喜欢');
+      expect(s.controls.first.label, 'Like');
       // 收起时：红心、播放/暂停、下一首。
       expect(s.androidCompactActionIndices, [0, 2, 3]);
       expect(s.playing, isTrue);
@@ -52,7 +52,7 @@ void main() {
 
     test('liked + paused swaps the icons', () {
       final s = playbackStateFor(state(liked: true, playing: false));
-      expect(s.controls.first.label, '取消喜欢');
+      expect(s.controls.first.label, 'Unlike');
       expect(s.controls[2].action, MediaAction.play);
     });
 

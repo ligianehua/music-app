@@ -16,8 +16,8 @@ const bool kDemoMode = bool.fromEnvironment('SHUAGE_DEMO');
 
 class DemoSource implements TrackSource {
   int _n = 0;
-  static const _artists = ['演示歌手 A', '演示歌手 B', '演示歌手 C', '演示歌手 D'];
-  static const _genres = ['流行', '民谣', '电子', 'R&B'];
+  static const _artists = ['Demo Artist A', 'Demo Artist B', 'Demo Artist C', 'Demo Artist D'];
+  static const _genres = ['Pop', 'Acoustic', 'Electronic', 'R&B'];
 
   @override
   Future<List<Track>> search(String term, {int limit = 30}) async {
@@ -26,9 +26,9 @@ class DemoSource implements TrackSource {
       final i = _n++;
       return Track(
         id: 'demo:$i',
-        title: '示例歌曲 ${i + 1}',
+        title: 'Sample Song ${i + 1}',
         artist: _artists[i % _artists.length],
-        album: '演示专辑',
+        album: 'Demo Album',
         artworkUrl: '',
         previewUrl: '',
         genre: _genres[i % _genres.length],
@@ -40,10 +40,10 @@ class DemoSource implements TrackSource {
 class DemoLyricsSource implements LyricsSource {
   @override
   Future<Lyrics?> fetch(Track track) async => Lyrics(plain: [
-        for (var i = 1; i <= 4; i++) '（演示歌词）主歌第 $i 行',
+        for (var i = 1; i <= 4; i++) '(demo lyrics) verse line $i',
         for (var r = 0; r < 2; r++) ...[
-          '（演示歌词）这是副歌',
-          '（演示歌词）副歌会重复',
+          '(demo lyrics) this is the chorus',
+          '(demo lyrics) the chorus repeats',
         ],
       ]);
 }

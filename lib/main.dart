@@ -38,12 +38,12 @@ Future<NowPlayingSession?> _initMediaSession() async {
     final audioSession = await AudioSession.instance;
     await audioSession.configure(const AudioSessionConfiguration.music());
   } catch (e) {
-    debugPrint('音频会话配置失败：$e');
+    debugPrint('Audio session setup failed: $e');
   }
   try {
     return await SystemMediaSession.init();
   } catch (e) {
-    debugPrint('锁屏控制初始化失败：$e');
+    debugPrint('Lock screen controls unavailable: $e');
     return null;
   }
 }

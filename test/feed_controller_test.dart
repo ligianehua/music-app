@@ -310,14 +310,14 @@ void main() {
     test('playNow from search plays immediately, then the feed continues', () async {
       await buildSocial();
       final picked = track('found', artist: 'Z');
-      await c.playNow(picked, reason: '来自你的搜索');
+      await c.playNow(picked, reason: 'From your search');
       expect(c.current!.track, picked);
-      expect(c.current!.reason, '来自你的搜索');
+      expect(c.current!.reason, 'From your search');
       expect(audio.played.last, 'found');
       expect(audio.queueIds, [for (final i in c.items) i.track.id]);
       // 已在播的歌再点一次不会重复插入。
       final before = c.items.length;
-      await c.playNow(picked, reason: '来自你的搜索');
+      await c.playNow(picked, reason: 'From your search');
       expect(c.items.length, before);
     });
   });
@@ -328,7 +328,7 @@ void main() {
     await settle();
     final at = c.insertNext(track('liked', artist: 'Z'));
     expect(at, 1);
-    expect(c.items[1].reason, '来自我的收藏');
+    expect(c.items[1].reason, 'From your saved songs');
     expect(audio.queueIds, [for (final i in c.items) i.track.id]);
     // 原生层播完当前这首，接的就是插进来的这首。
     audio.finish();
@@ -537,7 +537,7 @@ void main() {
     await c.init();
     expect(c.loading, isFalse);
     expect(c.items, isEmpty);
-    expect(c.error, contains('没找到能播放的歌'));
+    expect(c.error, contains('No playable songs'));
   });
 
   test('unexpected errors also surface instead of spinning forever', () async {

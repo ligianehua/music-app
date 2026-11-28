@@ -17,11 +17,12 @@ class Recommendation {
 
 /// 冷启动和探索用的种子词。
 const defaultSeeds = <String>[
-  '周杰伦', '林俊杰', '陈奕迅', '邓紫棋', '五月天', '孙燕姿', '王菲',
-  '毛不易', '李荣浩', '薛之谦', '告五人', '陶喆', '蔡依林', '方大同',
-  'Taylor Swift', 'The Weeknd', 'Billie Eilish', 'Coldplay', 'Bruno Mars',
-  'NewJeans', 'IU', '米津玄師', 'YOASOBI',
-  '华语流行', 'city pop', 'lofi', 'R&B', '民谣', '摇滚', '电子',
+  'Taylor Swift', 'Olivia Rodrigo', 'Sabrina Carpenter', 'The Weeknd',
+  'Billie Eilish', 'Bruno Mars', 'Ed Sheeran', 'Dua Lipa', 'Coldplay',
+  'Ben&Ben', 'SB19', 'BINI', 'Moira Dela Torre', 'Zack Tabudlo',
+  'December Avenue', 'Arthur Nery',
+  'NewJeans', 'BLACKPINK', 'IU', 'YOASOBI', 'Bad Bunny', 'Jay Chou',
+  'OPM', 'K-Pop', 'indie pop', 'acoustic', 'lofi', 'R&B', 'rock', 'hip hop',
 ];
 
 /// 「80% 投其所好 + 20% 探索」的推荐器。
@@ -118,7 +119,7 @@ class Recommender {
     try {
       final chart = await trending?.trending() ?? const <Track>[];
       var batch = _rank(chart, size);
-      var reason = '网络热歌榜';
+      var reason = 'Top charts';
       var found = chart;
       if (batch.isEmpty) {
         final names = viralFallbackArtists
@@ -128,7 +129,7 @@ class Recommender {
         final name = names[_random.nextInt(names.length)];
         found = await source.search(name, limit: 30);
         batch = _rank(found, size);
-        reason = '网红热歌：$name';
+        reason = 'Trending: $name';
       }
       for (final t in batch) {
         _seen.add(t.id);
@@ -201,14 +202,14 @@ class Recommender {
     if (!explore) {
       final pool = [
         for (final e in profile.topPositive(profile.artists, 5))
-          (term: e.key, w: e.value, reason: '因为你常听 ${e.key}'),
+          (term: e.key, w: e.value, reason: 'Because you play ${e.key}'),
         for (final e in profile.topPositive(profile.genres, 3))
-          (term: e.key, w: e.value * 0.6, reason: '你最近爱听 ${e.key}'),
+          (term: e.key, w: e.value * 0.6, reason: "You've been into ${e.key}"),
         for (final e in profile.topPositive(profile.searches, 5))
-          (term: e.key, w: e.value * 0.8, reason: '因为你搜过 ${e.key}'),
+          (term: e.key, w: e.value * 0.8, reason: 'Because you searched ${e.key}'),
         // 选过的歌手给一个固定权重：冷启动时靠它，听多了以后让位给真实行为。
         for (final a in preferredArtists)
-          (term: a, w: 1.5, reason: '你选了 $a'),
+          (term: a, w: 1.5, reason: 'You picked $a'),
       ];
       if (pool.isNotEmpty) {
         final total = pool.fold<double>(0, (s, e) => s + e.w);
@@ -228,13 +229,13 @@ class Recommender {
         _random.nextDouble() < (profile.hasPreference ? 0.5 : 0.85);
     if (usePreferred) {
       final term = preferred[_random.nextInt(preferred.length)];
-      return (term: term, reason: '按你的偏好：$term');
+      return (term: term, reason: 'For you: $term');
     }
     final candidates = seeds.where((s) => !blocked.contains(s)).toList();
     final term = candidates[_random.nextInt(candidates.length)];
     return (
       term: term,
-      reason: profile.hasPreference ? '换换口味：$term' : '热门推荐：$term',
+      reason: profile.hasPreference ? 'Something new: $term' : 'Popular: $term',
     );
   }
 }

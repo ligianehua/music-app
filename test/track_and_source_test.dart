@@ -90,7 +90,7 @@ void main() {
         return json200({'results': results});
       });
       final tracks = await ItunesSource(client: client).search('x');
-      expect(asked, ['hk', 'tw', 'us']);
+      expect(asked, ['ph', 'us']);
       expect(tracks.single.id, 'itunes:9');
     });
 
@@ -101,12 +101,12 @@ void main() {
         return json200({'results': [itunesSong(1)]});
       });
       await ItunesSource(client: client).search('x');
-      expect(asked, ['hk']);
+      expect(asked, ['ph']);
     });
 
     test('an error in one storefront does not hide results from the next', () async {
       final client = MockClient((req) async =>
-          req.url.queryParameters['country'] == 'hk'
+          req.url.queryParameters['country'] == 'ph'
               ? http.Response('busy', 503)
               : json200({'results': [itunesSong(2)]}));
       final tracks = await ItunesSource(client: client).search('x');
@@ -119,7 +119,7 @@ void main() {
       expect(
         () => ItunesSource(client: client).search('x'),
         throwsA(isA<TrackSourceException>()
-            .having((e) => e.message, 'message', contains('无法识别'))),
+            .having((e) => e.message, 'message', contains('unexpected response'))),
       );
     });
 

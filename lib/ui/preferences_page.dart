@@ -10,8 +10,8 @@ class PreferencesPage extends StatefulWidget {
   const PreferencesPage({
     super.key,
     this.initial = const UserPreferences(),
-    this.title = '选几个你喜欢的',
-    this.submitLabel = '开始刷歌',
+    this.title = 'What do you like?',
+    this.submitLabel = 'Start listening',
     this.onSubmit,
     this.onboarding = false,
   });
@@ -86,17 +86,18 @@ class _PreferencesPageState extends State<PreferencesPage> {
                   ? null
                   // 跳过等于「什么语言都推」，以后在「我的」里随时可以改。
                   : () => _submit(UserPreferences(languages: {...languageOptions})),
-              child: const Text('跳过，什么都推'),
+              child: const Text('Skip'),
             ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
-          const Text('选得越多，第一批推荐越准。之后你刷歌、点赞、搜索，推荐还会继续学。',
+          const Text(
+              'The more you pick, the better your first songs. We keep learning as you swipe, like and search.',
               style: TextStyle(color: Colors.white54)),
           _Section(
-            title: '语言',
+            title: 'Languages',
             child: _Chips(
               options: languageOptions,
               selected: _languages,
@@ -104,7 +105,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
             ),
           ),
           _Section(
-            title: '风格',
+            title: 'Genres',
             child: _Chips(
               options: genreOptions,
               selected: _genres,
@@ -112,7 +113,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
             ),
           ),
           _Section(
-            title: '歌手',
+            title: 'Artists',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -130,14 +131,14 @@ class _PreferencesPageState extends State<PreferencesPage> {
                         style: const TextStyle(color: Colors.white),
                         onSubmitted: (_) => _addCustomArtist(),
                         decoration: const InputDecoration(
-                          hintText: '没有你喜欢的？输入歌手名添加',
+                          hintText: 'Add another artist',
                           hintStyle: TextStyle(color: Colors.white38),
                           isDense: true,
                         ),
                       ),
                     ),
                     IconButton(
-                      tooltip: '添加歌手',
+                      tooltip: 'Add artist',
                       onPressed: _addCustomArtist,
                       icon: const Icon(Icons.add_circle_outline,
                           color: Colors.white),
@@ -148,14 +149,15 @@ class _PreferencesPageState extends State<PreferencesPage> {
             ),
           ),
           _Section(
-            title: '网红热歌',
+            title: 'Trending',
             child: SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _viral,
               onChanged: (v) => setState(() => _viral = v),
-              title: const Text('多推正在流行的歌',
+              title: const Text('More trending songs',
                   style: TextStyle(color: Colors.white)),
-              subtitle: const Text('来自 Apple Music 港台区的热门榜和网络歌手',
+              subtitle: const Text(
+                  'From Apple Music top charts in the Philippines and the US',
                   style: TextStyle(color: Colors.white54)),
             ),
           ),
@@ -168,7 +170,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
             onPressed: _saving || _value.isEmpty ? null : () => _submit(_value),
             style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48)),
-            child: Text(_value.isEmpty ? '至少选一项' : widget.submitLabel),
+            child: Text(_value.isEmpty ? 'Pick at least one' : widget.submitLabel),
           ),
         ),
       ),

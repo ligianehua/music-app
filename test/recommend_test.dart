@@ -63,14 +63,14 @@ void main() {
   });
 
   group('Recommender', () {
-    test('cold start explores seeds with a "热门推荐" reason', () async {
+    test('cold start explores seeds with a "Popular" reason', () async {
       final source = FakeSource({'s1': [track('1'), track('2', artist: 'B')]});
       final rec = Recommender(
           source: source, profile: TasteProfile(), seeds: ['s1']);
       final batch = await rec.nextBatch();
       expect(source.terms, ['s1']);
       expect(batch.map((r) => r.track.id), containsAll(['1', '2']));
-      expect(batch.first.reason, '热门推荐：s1');
+      expect(batch.first.reason, 'Popular: s1');
     });
 
     test('caps songs per artist and never repeats across batches', () async {
@@ -103,7 +103,7 @@ void main() {
       );
       final batch = await rec.nextBatch();
       expect(source.terms, ['陈奕迅']);
-      expect(batch.single.reason, '因为你常听 陈奕迅');
+      expect(batch.single.reason, 'Because you play 陈奕迅');
     });
 
     test('always explores when explore ratio is one', () async {
@@ -113,7 +113,7 @@ void main() {
           source: source, profile: profile, exploreRatio: 1, seeds: ['seed']);
       final batch = await rec.nextBatch();
       expect(source.terms, ['seed']);
-      expect(batch.single.reason, '换换口味：seed');
+      expect(batch.single.reason, 'Something new: seed');
     });
 
     test('filters blocked artists', () async {
@@ -166,7 +166,7 @@ void main() {
         // 不和第一批重复，理由沿用当初的搜索词。
         final firstIds = {for (final r in first) r.track.id};
         expect(second.every((r) => !firstIds.contains(r.track.id)), isTrue);
-        expect(second.first.reason, '热门推荐：s');
+        expect(second.first.reason, 'Popular: s');
         expect(source.failures, 98, reason: '有备用时网络出错不再重试');
       });
 

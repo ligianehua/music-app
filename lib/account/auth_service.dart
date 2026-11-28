@@ -27,26 +27,26 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
-/// 用户名：2 到 20 个字符，中文、字母、数字、下划线。
-final _usernamePattern = RegExp(r'^[一-龥A-Za-z0-9_]{2,20}$');
+/// 用户名：2 到 20 个字符，任何语言的字母、数字、下划线、点。
+final _usernamePattern = RegExp(r'^[\p{L}\p{N}_.]{2,20}$', unicode: true);
 
 /// 校验用户名，合法时返回 null，否则返回提示语。
 String? validateUsername(String raw) {
   final name = raw.trim();
-  if (name.isEmpty) return '请输入用户名';
+  if (name.isEmpty) return 'Enter a username.';
   if (!_usernamePattern.hasMatch(name)) {
-    return '用户名为 2 到 20 个字，可用中文、字母、数字和下划线';
+    return 'Use 2–20 letters, numbers, dots or underscores.';
   }
   return null;
 }
 
 /// 校验密码，合法时返回 null，否则返回提示语。
 String? validatePassword(String password) {
-  if (password.length < 6) return '密码至少 6 位';
-  if (password.length > 64) return '密码最多 64 位';
+  if (password.length < 6) return 'Use at least 6 characters.';
+  if (password.length > 64) return 'Use 64 characters or fewer.';
   if (!RegExp(r'[A-Za-z]').hasMatch(password) ||
       !RegExp(r'\d').hasMatch(password)) {
-    return '密码需要同时包含字母和数字';
+    return 'Include both letters and numbers.';
   }
   return null;
 }

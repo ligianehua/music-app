@@ -35,25 +35,25 @@ void main() {
 
     test('language + genre become search phrases per catalog', () {
       final seeds = preferenceSeeds(const UserPreferences(
-        languages: {'华语', '欧美', '日语'},
-        genres: {'摇滚'},
+        languages: {'Filipino', 'English', 'Japanese'},
+        genres: {'Rock'},
       ));
-      expect(seeds, containsAll(['华语摇滚', 'rock', 'J-rock']));
+      expect(seeds, containsAll(['OPM rock', 'rock', 'J-rock']));
     });
 
     test('a language without genres uses its default term', () {
-      expect(preferenceSeeds(const UserPreferences(languages: {'粤语', '韩语'})),
-          ['粤语流行', 'K-Pop']);
+      expect(preferenceSeeds(const UserPreferences(languages: {'Filipino', 'Korean'})),
+          ['OPM', 'K-Pop']);
     });
 
     test('genres without language are searched directly', () {
-      expect(preferenceSeeds(const UserPreferences(genres: {'民谣'})), ['民谣']);
+      expect(preferenceSeeds(const UserPreferences(genres: {'Acoustic'})), ['acoustic']);
     });
 
     test('artist options follow the chosen languages without duplicates', () {
-      final cantonese = artistOptionsFor({'粤语'});
-      expect(cantonese, contains('张学友'));
-      expect(cantonese, isNot(contains('Taylor Swift')));
+      final opm = artistOptionsFor({'Filipino'});
+      expect(opm, contains('Ben&Ben'));
+      expect(opm, isNot(contains('Taylor Swift')));
       final all = artistOptionsFor({});
       expect(all.toSet().length, all.length);
     });
@@ -65,19 +65,19 @@ void main() {
       final rec = Recommender(
         source: source,
         profile: TasteProfile(),
-        preferences: const UserPreferences(languages: {'粤语'}),
+        preferences: const UserPreferences(languages: {'Filipino'}),
         seeds: ['default-seed'],
         random: Random(3),
       );
       for (var i = 0; i < 20; i++) {
         await rec.nextBatch(size: 1);
       }
-      final preferred = source.terms.where((t) => t == '粤语流行').length;
+      final preferred = source.terms.where((t) => t == 'OPM').length;
       expect(preferred, greaterThan(source.terms.length ~/ 2));
       expect(source.terms, contains('default-seed'), reason: '仍留一部分探索，防止越推越窄');
     });
 
-    test('chosen artists are exploited with a "你选了" reason', () async {
+    test('chosen artists are exploited with a "You picked" reason', () async {
       final source = FakeSource({'周杰伦': [track('1', artist: '周杰伦')]});
       final rec = Recommender(
         source: source,
@@ -87,16 +87,16 @@ void main() {
         seeds: ['x'],
       );
       final batch = await rec.nextBatch();
-      expect(batch.single.reason, '你选了 周杰伦');
+      expect(batch.single.reason, 'You picked 周杰伦');
     });
 
-    test('searched terms are exploited with a "你搜过" reason', () async {
+    test('searched terms are exploited with a "Because you searched" reason', () async {
       final profile = TasteProfile()..recordSearch('后摇');
       final source = FakeSource({'后摇': [track('1', artist: 'Mogwai')]});
       final rec = Recommender(
           source: source, profile: profile, exploreRatio: 0, seeds: ['x']);
       final batch = await rec.nextBatch();
-      expect(batch.single.reason, '因为你搜过 后摇');
+      expect(batch.single.reason, 'Because you searched 后摇');
     });
 
     test('blocked artists are never chosen even if picked in preferences', () async {
@@ -126,7 +126,7 @@ void main() {
       );
       final batch = await rec.nextBatch();
       expect(batch.map((r) => r.track.id).toSet(), {'hot1', 'hot2'});
-      expect(batch.first.reason, '网络热歌榜');
+      expect(batch.first.reason, 'Top charts');
     });
 
     test('an empty chart falls back to searching viral artists', () async {
@@ -141,7 +141,7 @@ void main() {
       );
       final batch = await rec.nextBatch();
       expect(viralFallbackArtists, contains(source.terms.single));
-      expect(batch.single.reason, startsWith('网红热歌：'));
+      expect(batch.single.reason, startsWith('Trending: '));
     });
 
     test('people who did not opt in never get the chart', () async {

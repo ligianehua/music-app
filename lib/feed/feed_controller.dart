@@ -159,12 +159,12 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
       }
       if (added == 0 && items.length <= index) {
         // 一首都没拉到：明确告诉用户，别让界面一直转圈。
-        error = '暂时没找到能播放的歌，稍后重试';
+        error = 'No playable songs found. Please try again later.';
       }
     } on TrackSourceException catch (e) {
       error = e.message;
     } catch (e) {
-      error = '加载失败：$e';
+      error = 'Something went wrong: $e';
     } finally {
       loading = false;
       _notify();
@@ -363,7 +363,7 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
   /// 以当前会员身份发评论。
   Future<Comment> addComment(Track t, String text) async {
     final store = comments;
-    if (store == null) throw StateError('评论功能不可用');
+    if (store == null) throw StateError('Comments are not available.');
     final c = await store.add(t.id, user, text);
     _commentCache[t.id] = [c, ...?_commentCache[t.id]];
     _notify();
@@ -394,7 +394,7 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
   }
 
   /// 把一首歌插到当前位置后面，返回插入的位置。
-  int insertNext(Track t, {String reason = '来自我的收藏'}) {
+  int insertNext(Track t, {String reason = 'From your saved songs'}) {
     recommender.markSeen(t);
     final at = (index + 1).clamp(0, items.length);
     items.insert(at, FeedItem(t, reason));
@@ -429,7 +429,7 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
 
   /// 队列同步失败只记日志，不让异常冒泡成未捕获错误。
   Future<void> _guard(Future<void> op) => op.catchError((Object e) {
-        debugPrint('播放队列同步失败：$e');
+        debugPrint('Playback queue sync failed: $e');
       });
 
   void _notify() {

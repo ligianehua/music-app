@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../account/auth_service.dart';
+import '../app_info.dart';
 
 /// 登录 / 注册。
 class AuthPage extends StatefulWidget {
@@ -46,9 +47,14 @@ class _AuthPageState extends State<AuthPage> {
     }
   }
 
-  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
+  InputDecoration _field(String label, {Widget? suffix, String? helper}) =>
+      InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.white54),
+        helperText: helper,
+        helperStyle: const TextStyle(color: Colors.white38),
+        helperMaxLines: 2,
+        errorMaxLines: 2,
         filled: true,
         fillColor: Colors.white10,
         suffixIcon: suffix,
@@ -61,7 +67,7 @@ class _AuthPageState extends State<AuthPage> {
   @override
   Widget build(BuildContext context) {
     final visibility = IconButton(
-      tooltip: _showPassword ? '隐藏密码' : '显示密码',
+      tooltip: _showPassword ? 'Hide password' : 'Show password',
       onPressed: () => setState(() => _showPassword = !_showPassword),
       icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility,
           color: Colors.white54),
@@ -79,15 +85,15 @@ class _AuthPageState extends State<AuthPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text('刷歌',
+                    const Text(appName,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             color: Colors.white,
                             fontSize: 40,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: 2)),
+                            letterSpacing: 0.5)),
                     const SizedBox(height: 8),
-                    const Text('像刷短视频一样发现音乐',
+                    const Text(appTagline,
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.white54)),
                     const SizedBox(height: 40),
@@ -96,7 +102,7 @@ class _AuthPageState extends State<AuthPage> {
                       style: const TextStyle(color: Colors.white),
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.username],
-                      decoration: _field('用户名'),
+                      decoration: _field('Username'),
                       validator: (v) => _register ? validateUsername(v ?? '') : null,
                     ),
                     const SizedBox(height: 12),
@@ -111,12 +117,15 @@ class _AuthPageState extends State<AuthPage> {
                         _register ? AutofillHints.newPassword : AutofillHints.password,
                       ],
                       decoration: _field(
-                        _register ? '密码（至少 6 位，含字母和数字）' : '密码',
+                        'Password',
                         suffix: visibility,
+                        helper: _register
+                            ? 'At least 6 characters, with letters and numbers'
+                            : null,
                       ),
                       validator: (v) => _register
                           ? validatePassword(v ?? '')
-                          : ((v ?? '').isEmpty ? '请输入密码' : null),
+                          : ((v ?? '').isEmpty ? 'Enter your password.' : null),
                     ),
                     if (_register) ...[
                       const SizedBox(height: 12),
@@ -125,9 +134,9 @@ class _AuthPageState extends State<AuthPage> {
                         obscureText: !_showPassword,
                         style: const TextStyle(color: Colors.white),
                         onFieldSubmitted: (_) => _submit(),
-                        decoration: _field('再输一次密码'),
+                        decoration: _field('Confirm password'),
                         validator: (v) =>
-                            v == _password.text ? null : '两次输入的密码不一样',
+                            v == _password.text ? null : "Passwords don't match.",
                       ),
                     ],
                     if (_error != null) ...[
@@ -146,7 +155,7 @@ class _AuthPageState extends State<AuthPage> {
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2))
-                          : Text(_register ? '注册' : '登录'),
+                          : Text(_register ? 'Sign up' : 'Log in'),
                     ),
                     const SizedBox(height: 8),
                     TextButton(
@@ -163,10 +172,13 @@ class _AuthPageState extends State<AuthPage> {
                                 _password.text = pw;
                                 _confirm.clear();
                               }),
-                      child: Text(_register ? '已有账号？去登录' : '没有账号？注册一个'),
+                      child: Text(_register
+                          ? 'Already have an account? Log in'
+                          : "Don't have an account? Sign up"),
                     ),
                     const SizedBox(height: 16),
-                    const Text('当前是本机账号：账号和数据只保存在这台手机上',
+                    const Text(
+                        'This is a local account. Your account and data stay on this phone.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.white38, fontSize: 12)),
                   ],

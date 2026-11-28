@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../account/auth_service.dart';
 import '../feed/feed_controller.dart';
+import 'comments_sheet.dart' show monthName;
 import '../models/track.dart';
 import 'preferences_page.dart';
 import 'search_page.dart';
@@ -24,18 +25,18 @@ class MePage extends StatelessWidget {
         appBar: AppBar(
           backgroundColor: Colors.black,
           foregroundColor: Colors.white,
-          title: const Text('我的'),
+          title: const Text('Profile'),
           actions: [
             IconButton(
-              tooltip: '听歌偏好',
+              tooltip: 'Music preferences',
               icon: const Icon(Icons.tune_rounded),
               onPressed: () async {
                 final prefs = await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => PreferencesPage(
                       initial: auth.currentUser?.preferences ?? user.preferences,
-                      title: '修改听歌偏好',
-                      submitLabel: '保存',
+                      title: 'Edit preferences',
+                      submitLabel: 'Save',
                     ),
                   ),
                 );
@@ -44,26 +45,28 @@ class MePage extends StatelessWidget {
                 controller.updatePreferences(prefs);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已保存，接下来的推荐会按新偏好来')));
+                      const SnackBar(
+                          content: Text('Saved. New songs will follow your preferences.')));
                 }
               },
             ),
             IconButton(
-              tooltip: '退出登录',
+              tooltip: 'Log out',
               icon: const Icon(Icons.logout_rounded),
               onPressed: () async {
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text('退出登录？'),
-                    content: const Text('你的收藏和点赞会保留，下次登录还在。'),
+                    title: const Text('Log out?'),
+                    content: const Text(
+                        'Your saved songs and likes will be here when you log back in.'),
                     actions: [
                       TextButton(
                           onPressed: () => Navigator.pop(context, false),
-                          child: const Text('取消')),
+                          child: const Text('Cancel')),
                       TextButton(
                           onPressed: () => Navigator.pop(context, true),
-                          child: const Text('退出')),
+                          child: const Text('Log out')),
                     ],
                   ),
                 );
@@ -73,61 +76,63 @@ class MePage extends StatelessWidget {
               },
             ),
           ],
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(112),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: const Color(0xFF31C27C),
-                    child: Text(user.username.characters.first,
-                        style: const TextStyle(fontSize: 20, color: Colors.white)),
-                  ),
-                  title: Text(user.username,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700)),
-                  subtitle: Text(
-                      '${user.createdAt.year} 年 ${user.createdAt.month} 月加入 · 本机账号',
-                      style: const TextStyle(color: Colors.white54)),
-                ),
-                const TabBar(
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white54,
-                  tabs: [Tab(text: '收藏'), Tab(text: '点赞')],
-                ),
-              ],
-            ),
-          ),
         ),
-        body: ListenableBuilder(
-          listenable: controller,
-          builder: (context, _) => TabBarView(
-            children: [
-              _TrackList(
-                tracks: controller.favorites,
-                empty: '点歌曲右侧的星星，就能收藏到这里',
-                reason: '来自我的收藏',
-                trailing: (t) => IconButton(
-                  tooltip: '取消收藏',
-                  icon: const Icon(Icons.star_rounded, color: Color(0xFFFFC53D)),
-                  onPressed: () => controller.toggleFavorite(t),
-                ),
+        // 账号信息放在正文而不是顶栏里：高度随字体大小伸缩，不会被截断。
+        body: Column(
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                radius: 24,
+                backgroundColor: const Color(0xFF31C27C),
+                child: Text(user.username.characters.first.toUpperCase(),
+                    style: const TextStyle(fontSize: 20, color: Colors.white)),
               ),
-              _TrackList(
-                tracks: controller.liked,
-                empty: '双击正在播的歌就能点赞',
-                reason: '来自我的点赞',
-                trailing: (t) => IconButton(
-                  tooltip: '取消点赞',
-                  icon: const Icon(Icons.favorite, color: Color(0xFFFF2D55)),
-                  onPressed: () => controller.toggleLike(t),
-                ),
+              title: Text(user.username,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700)),
+              subtitle: Text(
+                  'Joined ${monthName(user.createdAt.month)} ${user.createdAt.year} · Local account',
+                  style: const TextStyle(color: Colors.white54)),
+            ),
+            const TabBar(
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white54,
+              tabs: [Tab(text: 'Saved'), Tab(text: 'Liked')],
+            ),
+            Expanded(
+              child: ListenableBuilder(
+              listenable: controller,
+              builder: (context, _) => TabBarView(
+                children: [
+                  _TrackList(
+                    tracks: controller.favorites,
+                    empty: 'Tap the star on a song to save it here.',
+                    reason: 'From your saved songs',
+                    trailing: (t) => IconButton(
+                      tooltip: 'Remove from saved',
+                      icon: const Icon(Icons.star_rounded, color: Color(0xFFFFC53D)),
+                      onPressed: () => controller.toggleFavorite(t),
+                    ),
+                  ),
+                  _TrackList(
+                    tracks: controller.liked,
+                    empty: 'Double-tap a playing song to like it.',
+                    reason: 'From your likes',
+                    trailing: (t) => IconButton(
+                      tooltip: 'Unlike',
+                      icon: const Icon(Icons.favorite, color: Color(0xFFFF2D55)),
+                      onPressed: () => controller.toggleLike(t),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            ),
+          ],
         ),
       ),
     );
@@ -154,7 +159,13 @@ class _TrackList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (tracks.isEmpty) {
       return Center(
-          child: Text(empty, style: const TextStyle(color: Colors.white54)));
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text(empty,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white54)),
+        ),
+      );
     }
     return ListView.builder(
       itemCount: tracks.length,

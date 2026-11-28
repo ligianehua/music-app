@@ -42,7 +42,7 @@ class LocalAuthService extends AuthService {
 
     final users = _loadUsers();
     final key = _key(username);
-    if (users.containsKey(key)) throw AuthException('这个用户名已经被注册了');
+    if (users.containsKey(key)) throw AuthException('That username is already taken.');
 
     final user = AppUser(
       id: _newId(),
@@ -62,7 +62,7 @@ class LocalAuthService extends AuthService {
     final record = _loadUsers()[_key(username)];
     // 用户名不存在和密码错误给同一句提示，不暴露哪些用户名已注册。
     if (record == null || !record.password.verify(password)) {
-      throw AuthException('用户名或密码不对');
+      throw AuthException('Incorrect username or password.');
     }
     return _signIn(record.user);
   }
@@ -77,7 +77,7 @@ class LocalAuthService extends AuthService {
   @override
   Future<AppUser> updatePreferences(UserPreferences preferences) async {
     final current = _current;
-    if (current == null) throw AuthException('请先登录');
+    if (current == null) throw AuthException('Please log in first.');
     final users = _loadUsers();
     final key = _key(current.username);
     final record = users[key]!;

@@ -14,11 +14,11 @@ class ItunesSource implements TrackSource {
       : assert(storefronts.isNotEmpty),
         _client = client ?? http.Client();
 
-  /// 默认依次查询的商店区域。
+  /// 默认依次查询的商店区域：先菲律宾区，再美区。
   ///
+  /// 美区曲目最全，基本覆盖全球；菲律宾区补本地歌手。前一个区搜不到就换下一个。
   /// 不能用中国区 `cn`：iTunes 中国区从不卖单曲，按歌曲搜索永远返回空列表。
-  /// 港区、台区华语曲目多，美区覆盖最全，前一个区搜不到就换下一个。
-  static const defaultStorefronts = ['hk', 'tw', 'us'];
+  static const defaultStorefronts = ['ph', 'us'];
 
   final http.Client _client;
   final List<String> storefronts;
@@ -50,12 +50,12 @@ class ItunesSource implements TrackSource {
     try {
       res = await _client.get(uri).timeout(const Duration(seconds: 10));
     } on TimeoutException {
-      throw TrackSourceException('网络超时，下拉重试一下');
+      throw TrackSourceException('The connection timed out. Please try again.');
     } catch (e) {
-      throw TrackSourceException('网络不可用：$e');
+      throw TrackSourceException('No internet connection.');
     }
     if (res.statusCode != 200) {
-      throw TrackSourceException('曲库接口返回 ${res.statusCode}');
+      throw TrackSourceException('The music service is unavailable (error ${res.statusCode}).');
     }
     try {
       final body = jsonDecode(utf8.decode(res.bodyBytes));
@@ -70,7 +70,7 @@ class ItunesSource implements TrackSource {
           .toList();
     } catch (_) {
       // 常见于网络被劫持、返回了一个网页而不是 JSON。
-      throw TrackSourceException('曲库返回了无法识别的内容，可能是网络被拦截');
+      throw TrackSourceException('The music service sent an unexpected response. Your network may be blocking it.');
     }
   }
 }

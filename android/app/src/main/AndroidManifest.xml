@@ -1,13 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- 刷歌需要联网拉取曲库、封面和歌词 -->
+    <!-- 需要联网拉取曲库、封面和歌词 -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- 锁屏后继续播放：唤醒锁 + 媒体播放类前台服务（安卓 14 起需单独声明类型） -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <application
-        android:label="刷歌"
+        android:label="SongSwipe"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

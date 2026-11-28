@@ -56,7 +56,7 @@ class _SearchPageState extends State<SearchPage> {
           textInputAction: TextInputAction.search,
           onSubmitted: _search,
           decoration: InputDecoration(
-            hintText: '搜歌名、歌手',
+            hintText: 'Search songs or artists',
             hintStyle: const TextStyle(color: Colors.white38),
             filled: true,
             fillColor: Colors.white10,
@@ -71,7 +71,7 @@ class _SearchPageState extends State<SearchPage> {
         actions: [
           TextButton(
             onPressed: () => _search(_input.text),
-            child: const Text('搜索'),
+            child: const Text('Search'),
           ),
         ],
       ),
@@ -86,8 +86,12 @@ class _SearchPageState extends State<SearchPage> {
         final history = c.searchHistory;
         if (history.isEmpty) {
           return const Center(
-            child: Text('搜过的歌会让推荐更懂你',
-                style: TextStyle(color: Colors.white38)),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 32),
+              child: Text('What you search helps us find songs you\'ll love.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white38)),
+            ),
           );
         }
         return Padding(
@@ -97,13 +101,16 @@ class _SearchPageState extends State<SearchPage> {
             children: [
               Row(
                 children: [
-                  const Text('搜索历史',
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700)),
-                  const Spacer(),
+                  const Expanded(
+                    child: Text('Recent searches',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w700)),
+                  ),
                   TextButton(
                     onPressed: c.clearSearchHistory,
-                    child: const Text('清空'),
+                    child: const Text('Clear'),
                   ),
                 ],
               ),
@@ -137,12 +144,12 @@ class _SearchPageState extends State<SearchPage> {
         }
         if (snap.hasError) {
           final e = snap.error;
-          return _Message(e is TrackSourceException ? e.message : '搜索失败：$e',
+          return _Message(e is TrackSourceException ? e.message : 'Search failed: $e',
               onRetry: () => _search(_term));
         }
         final tracks = snap.data ?? const [];
         if (tracks.isEmpty) {
-          return _Message('没找到「$_term」相关的歌，换个说法试试');
+          return _Message('No songs found for "$_term". Try different words.');
         }
         return ListView.builder(
           itemCount: tracks.length,
@@ -203,7 +210,7 @@ class _Message extends StatelessWidget {
                   style: const TextStyle(color: Colors.white54)),
               if (onRetry != null) ...[
                 const SizedBox(height: 12),
-                FilledButton(onPressed: onRetry, child: const Text('重试')),
+                FilledButton(onPressed: onRetry, child: const Text('Try again')),
               ],
             ],
           ),

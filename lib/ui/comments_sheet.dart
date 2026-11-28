@@ -18,14 +18,22 @@ Future<void> showCommentsSheet(
   );
 }
 
-/// 「刚刚」「5 分钟前」「3 天前」，超过一个月显示日期。
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// 月份缩写，如 Nov。
+String monthName(int month) => _months[month - 1];
+
+/// 「just now」「5m ago」「3d ago」，超过一个月显示日期，如 Jan 5, 2026。
 String relativeTime(DateTime t, DateTime now) {
   final d = now.difference(t);
-  if (d.inMinutes < 1) return '刚刚';
-  if (d.inHours < 1) return '${d.inMinutes} 分钟前';
-  if (d.inDays < 1) return '${d.inHours} 小时前';
-  if (d.inDays < 30) return '${d.inDays} 天前';
-  return '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+  if (d.inMinutes < 1) return 'just now';
+  if (d.inHours < 1) return '${d.inMinutes}m ago';
+  if (d.inDays < 1) return '${d.inHours}h ago';
+  if (d.inDays < 30) return '${d.inDays}d ago';
+  return '${monthName(t.month)} ${t.day}, ${t.year}';
 }
 
 class CommentsSheet extends StatefulWidget {
@@ -69,14 +77,14 @@ class _CommentsSheetState extends State<CommentsSheet> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除这条评论？'),
+        title: const Text('Delete this comment?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
+              child: const Text('Cancel')),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('删除')),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -102,7 +110,12 @@ class _CommentsSheetState extends State<CommentsSheet> {
               listenable: c,
               builder: (context, _) {
                 final n = c.commentCount(widget.track);
-                return Text(n == null ? '评论' : '$n 条评论',
+                return Text(
+                    n == null
+                        ? 'Comments'
+                        : n == 1
+                            ? '1 comment'
+                            : '$n comments',
                     style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -110,8 +123,13 @@ class _CommentsSheetState extends State<CommentsSheet> {
               },
             ),
             const SizedBox(height: 4),
-            const Text('评论保存在这台手机上，同一台手机的账号互相可见',
-                style: TextStyle(fontSize: 12, color: Colors.white54)),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                  'Comments are saved on this phone and shared with other accounts on it.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: Colors.white54)),
+            ),
             const Divider(color: Colors.white12, height: 24),
             Expanded(
               child: FutureBuilder<List<Comment>>(
@@ -123,7 +141,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                   final list = snap.data ?? const [];
                   if (list.isEmpty) {
                     return const Center(
-                      child: Text('还没有评论，来说第一句',
+                      child: Text('No comments yet. Be the first!',
                           style: TextStyle(color: Colors.white38)),
                     );
                   }
@@ -143,7 +161,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                             CircleAvatar(
                               radius: 16,
                               backgroundColor: Colors.white12,
-                              child: Text(cm.username.characters.first,
+                              child: Text(cm.username.characters.first.toUpperCase(),
                                   style: const TextStyle(color: Colors.white)),
                             ),
                             const SizedBox(width: 10),
@@ -152,7 +170,9 @@ class _CommentsSheetState extends State<CommentsSheet> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '${cm.username}${mine ? '（我）' : ''} · ${relativeTime(cm.createdAt, now)}',
+                                    '${cm.username}${mine ? ' (you)' : ''} · ${relativeTime(cm.createdAt, now)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                         color: Colors.white54, fontSize: 12),
                                   ),
@@ -188,7 +208,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                         onSubmitted: (_) => _submit(),
                         decoration: InputDecoration(
                           counterText: '',
-                          hintText: '以 ${c.user.username} 的身份说点什么…',
+                          hintText: 'Comment as ${c.user.username}…',
                           hintStyle: const TextStyle(color: Colors.white38),
                           filled: true,
                           fillColor: Colors.white10,
@@ -204,7 +224,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                     IconButton(
                       onPressed: _sending ? null : _submit,
                       icon: const Icon(Icons.send_rounded, color: Colors.white),
-                      tooltip: '发送',
+                      tooltip: 'Send',
                     ),
                   ],
                 ),

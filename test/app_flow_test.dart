@@ -49,30 +49,30 @@ void main() {
     await pumpApp(tester, s);
     expect(find.byType(AuthPage), findsOneWidget);
 
-    await tester.tap(find.text('没有账号？注册一个'));
+    await tester.tap(find.text("Don't have an account? Sign up"));
     await tester.pump();
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), '小明');
     await tester.enterText(fields.at(1), 'abc123');
     await tester.enterText(fields.at(2), 'abc124');
-    await tester.tap(find.widgetWithText(FilledButton, '注册'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign up'));
     await tester.pump();
-    expect(find.text('两次输入的密码不一样'), findsOneWidget);
+    expect(find.text("Passwords don't match."), findsOneWidget);
 
     await tester.enterText(fields.at(2), 'abc123');
-    await tester.tap(find.widgetWithText(FilledButton, '注册'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign up'));
     await tester.pumpAndSettle();
     expect(find.byType(PreferencesPage), findsOneWidget);
-    expect(find.text('至少选一项'), findsOneWidget);
+    expect(find.text('Pick at least one'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilterChip, '粤语'));
+    await tester.tap(find.widgetWithText(FilterChip, 'Filipino'));
     await tester.pump();
-    await tester.tap(find.text('开始刷歌'));
+    await tester.tap(find.text('Start listening'));
     await tester.pump();
     await settleFrames(tester);
 
     expect(find.byType(FeedPage), findsOneWidget);
-    expect(s.auth.currentUser!.preferences.languages, {'粤语'});
+    expect(s.auth.currentUser!.preferences.languages, {'Filipino'});
     expect(lastAudio.played, hasLength(1));
     expect(source.terms, isNotEmpty);
   });
@@ -82,7 +82,7 @@ void main() {
     await s.auth.register('小红', 'abc123');
     await pumpApp(tester, s);
     expect(find.byType(PreferencesPage), findsOneWidget);
-    await tester.tap(find.text('跳过，什么都推'));
+    await tester.tap(find.text('Skip'));
     await tester.pump();
     await settleFrames(tester);
     expect(find.byType(FeedPage), findsOneWidget);
@@ -93,19 +93,19 @@ void main() {
     final s = await services();
     await s.auth.register('小明', 'abc123');
     await s.auth.updatePreferences(
-        (s.auth.currentUser!.preferences).copyWith(languages: {'华语'}));
+        (s.auth.currentUser!.preferences).copyWith(languages: {'English'}));
     await pumpApp(tester, s);
     await settleFrames(tester);
     expect(find.byType(FeedPage), findsOneWidget);
     final audio = lastAudio;
     expect(audio.isPlaying, isTrue);
 
-    await tester.tap(find.byTooltip('我的'));
+    await tester.tap(find.byTooltip('Profile'));
     await settleFrames(tester);
     expect(find.text('小明'), findsOneWidget);
-    await tester.tap(find.byTooltip('退出登录'));
+    await tester.tap(find.byTooltip('Log out'));
     await settleFrames(tester);
-    await tester.tap(find.widgetWithText(TextButton, '退出'));
+    await tester.tap(find.widgetWithText(TextButton, 'Log out'));
     await settleFrames(tester);
 
     expect(find.byType(AuthPage), findsOneWidget);
@@ -117,32 +117,32 @@ void main() {
     final s = await services();
     await s.auth.register('用户甲', 'abc123');
     await s.auth.updatePreferences(
-        s.auth.currentUser!.preferences.copyWith(languages: {'华语'}));
+        s.auth.currentUser!.preferences.copyWith(languages: {'English'}));
     await pumpApp(tester, s);
     await settleFrames(tester);
-    await tester.tap(find.text('收藏').first);
+    await tester.tap(find.text('Save').first);
     await settleFrames(tester);
-    expect(find.text('已收藏'), findsOneWidget);
+    expect(find.text('Saved'), findsOneWidget);
 
     await s.auth.logout();
     await settleFrames(tester);
     await s.auth.register('用户乙', 'abc123');
     await s.auth.updatePreferences(
-        s.auth.currentUser!.preferences.copyWith(languages: {'华语'}));
+        s.auth.currentUser!.preferences.copyWith(languages: {'English'}));
     await settleFrames(tester);
     expect(find.byType(FeedPage), findsOneWidget);
-    expect(find.text('已收藏'), findsNothing);
+    expect(find.text('Saved'), findsNothing);
   });
 
   testWidgets('a search result plays right away', (tester) async {
     final s = await services();
     await s.auth.register('小明', 'abc123');
     await s.auth.updatePreferences(
-        s.auth.currentUser!.preferences.copyWith(languages: {'华语'}));
+        s.auth.currentUser!.preferences.copyWith(languages: {'English'}));
     await pumpApp(tester, s);
     await settleFrames(tester);
 
-    await tester.tap(find.byTooltip('搜索'));
+    await tester.tap(find.byTooltip('Search'));
     await settleFrames(tester);
     await tester.enterText(find.byType(TextField), '晴天');
     await tester.testTextInput.receiveAction(TextInputAction.search);
