@@ -81,7 +81,7 @@ class _FeedPageState extends State<FeedPage> {
           final Widget body;
           if (c.items.isEmpty) {
             body = _StatusView(
-              loading: c.loading || c.error == null,
+              loading: c.loading,
               error: c.error,
               onRetry: c.retry,
             );
@@ -95,7 +95,7 @@ class _FeedPageState extends State<FeedPage> {
               itemBuilder: (context, i) {
                 if (i >= c.items.length) {
                   return _StatusView(
-                    loading: c.loading || c.error == null,
+                    loading: c.loading,
                     error: c.error,
                     onRetry: c.retry,
                   );
@@ -219,7 +219,7 @@ class _StatusView extends StatelessWidget {
                   const Icon(Icons.wifi_off_rounded,
                       color: Colors.white54, size: 48),
                   const SizedBox(height: 12),
-                  Text(error ?? '出了点问题',
+                  Text(error ?? '暂时没有更多歌了',
                       style: const TextStyle(color: Colors.white70)),
                   const SizedBox(height: 16),
                   FilledButton(onPressed: onRetry, child: const Text('重试')),

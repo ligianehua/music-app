@@ -450,4 +450,29 @@ void main() {
     }
     expect(audio.played, hasLength(4));
   });
+
+  test('an empty catalog shows a message instead of spinning forever', () async {
+    c = FeedController(
+      recommender: Recommender(
+          source: FakeSource({}), profile: TasteProfile(), seeds: ['s']),
+      audio: FakeAudio(),
+      store: await memoryStore(),
+    );
+    await c.init();
+    expect(c.loading, isFalse);
+    expect(c.items, isEmpty);
+    expect(c.error, contains('没找到能播放的歌'));
+  });
+
+  test('unexpected errors also surface instead of spinning forever', () async {
+    final source = FakeSource({})..throwOnce = StateError('boom');
+    c = FeedController(
+      recommender: Recommender(source: source, profile: TasteProfile(), seeds: ['s']),
+      audio: FakeAudio(),
+      store: await memoryStore(),
+    );
+    await c.init();
+    expect(c.loading, isFalse);
+    expect(c.error, contains('boom'));
+  });
 }

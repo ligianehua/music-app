@@ -22,6 +22,10 @@ Map<String, dynamic> itunesSong(int id,
       'trackViewUrl': 'https://music.apple.com/x',
     };
 
+/// 带中文的 JSON 响应要按 UTF-8 字节构造。
+http.Response json200(Object body) =>
+    http.Response.bytes(utf8.encode(jsonEncode(body)), 200);
+
 void main() {
   group('Track', () {
     test('fromItunes upscales artwork and maps fields', () {
@@ -60,7 +64,7 @@ void main() {
           200,
         );
       });
-      final tracks = await ItunesSource(client: client, country: 'cn')
+      final tracks = await ItunesSource(client: client, storefronts: ['hk'])
           .search('周杰伦', limit: 5);
       expect(tracks.map((t) => t.id), ['itunes:1', 'itunes:5']);
       expect(seen.host, 'itunes.apple.com');
@@ -68,8 +72,55 @@ void main() {
         'term': '周杰伦',
         'entity': 'song',
         'limit': '5',
-        'country': 'cn',
+        'country': 'hk',
       });
+    });
+
+    test('never queries the China storefront by default', () {
+      // iTunes 中国区不卖单曲，按歌曲搜索永远是空列表。
+      expect(ItunesSource.defaultStorefronts, isNot(contains('cn')));
+    });
+
+    test('falls through storefronts until one has playable songs', () async {
+      final asked = <String>[];
+      final client = MockClient((req) async {
+        final country = req.url.queryParameters['country']!;
+        asked.add(country);
+        final results = country == 'us' ? [itunesSong(9)] : [];
+        return json200({'results': results});
+      });
+      final tracks = await ItunesSource(client: client).search('x');
+      expect(asked, ['hk', 'tw', 'us']);
+      expect(tracks.single.id, 'itunes:9');
+    });
+
+    test('stops at the first storefront with results', () async {
+      final asked = <String>[];
+      final client = MockClient((req) async {
+        asked.add(req.url.queryParameters['country']!);
+        return json200({'results': [itunesSong(1)]});
+      });
+      await ItunesSource(client: client).search('x');
+      expect(asked, ['hk']);
+    });
+
+    test('an error in one storefront does not hide results from the next', () async {
+      final client = MockClient((req) async =>
+          req.url.queryParameters['country'] == 'hk'
+              ? http.Response('busy', 503)
+              : json200({'results': [itunesSong(2)]}));
+      final tracks = await ItunesSource(client: client).search('x');
+      expect(tracks.single.id, 'itunes:2');
+    });
+
+    test('an HTML page instead of JSON becomes a readable error', () async {
+      final client = MockClient(
+          (_) async => http.Response('<html>login to wifi</html>', 200));
+      expect(
+        () => ItunesSource(client: client).search('x'),
+        throwsA(isA<TrackSourceException>()
+            .having((e) => e.message, 'message', contains('无法识别'))),
+      );
     });
 
     test('throws a readable error on HTTP failure', () async {

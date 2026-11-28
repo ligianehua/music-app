@@ -133,8 +133,14 @@ class FeedController extends ChangeNotifier implements RemoteCommands {
       if (pending != null && pending < items.length) {
         unawaited(_activate(pending));
       }
+      if (added == 0 && items.length <= index) {
+        // 一首都没拉到：明确告诉用户，别让界面一直转圈。
+        error = '暂时没找到能播放的歌，稍后重试';
+      }
     } on TrackSourceException catch (e) {
       error = e.message;
+    } catch (e) {
+      error = '加载失败：$e';
     } finally {
       loading = false;
       _notify();

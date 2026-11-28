@@ -42,6 +42,14 @@ jobs:
       - name: Test
         run: flutter test
 
+      # 每台云端机器都会新生成签名密钥，签名不同的安装包无法覆盖安装。
+      # 缓存第一次生成的密钥，之后每次构建都用同一把，手机上可以直接升级。
+      - name: Reuse signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
       - name: Build APK
         run: flutter build apk --release --build-number=${{ github.run_number }}
 

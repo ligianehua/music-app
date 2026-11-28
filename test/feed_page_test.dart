@@ -112,4 +112,20 @@ void main() {
     expect(find.text(c.items[1].track.title), findsOneWidget);
     expect(audio.played, [c.items[0].track.id, c.items[1].track.id]);
   });
+
+  testWidgets('an empty catalog shows a retry button, not an endless spinner',
+      (tester) async {
+    c = FeedController(
+      recommender: Recommender(
+          source: FakeSource({}), profile: TasteProfile(), seeds: ['s']),
+      audio: FakeAudio(),
+      store: await memoryStore(),
+    );
+    await tester.pumpWidget(MaterialApp(home: FeedPage(controller: c)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('重试'), findsOneWidget);
+    expect(find.textContaining('没找到能播放的歌'), findsOneWidget);
+  });
 }
